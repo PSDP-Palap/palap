@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import BannerSection from "@/components/home/BannerSection";
 import HeaderSection from "@/components/home/HeaderSection";
@@ -14,13 +14,13 @@ export const Route = createFileRoute("/")({
       await initialize();
     }
 
-    let updatedProfile = useUserStore.getState().profile;
+    let currentProfile = useUserStore.getState().profile;
 
-    if (!updatedProfile) {
-      updatedProfile = await fetchProfile();
+    if (!currentProfile) {
+      currentProfile = await fetchProfile();
     }
 
-    if (updatedProfile?.role === "admin") {
+    if (currentProfile?.role === "admin") {
       throw redirect({ to: "/management/admin" });
     }
   },
@@ -29,11 +29,6 @@ export const Route = createFileRoute("/")({
 
 function RouteComponent() {
   const { profile } = useUserStore();
-
-  // If Admin, redirect to Management (Reactive fallback)
-  if (profile?.role === "admin") {
-    return <Navigate to="/management/admin" />;
-  }
 
   // If Freelance, show Freelance Dashboard
   if (profile?.role === "freelance") {
@@ -53,7 +48,7 @@ function RouteComponent() {
     );
   }
 
-  // Otherwise, show regular Home Page
+  // Otherwise, show regular Home Page (Customers & Guests)
   return (
     <main className="relative pb-16 bg-[#FFF2EC]">
       <img src="home_header.png" alt="home_header" className="w-full" />

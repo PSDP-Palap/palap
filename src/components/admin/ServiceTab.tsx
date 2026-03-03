@@ -49,7 +49,7 @@ export const ServiceTab = () => {
     setForm(rest);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!form.name.trim()) return;
     if (editingId) {
