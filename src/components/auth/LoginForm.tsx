@@ -39,7 +39,16 @@ const LoginForm = () => {
       }
 
       toast.success("Welcome back!", { id: loadingToast });
-      router.navigate({ to: "/" });
+
+      // Check role and navigate
+      const { data: { session } } = await supabase.auth.getSession();
+      const role = session?.user.app_metadata?.role;
+
+      if (role === "admin") {
+        router.navigate({ to: "/management/admin" });
+      } else {
+        router.navigate({ to: "/" });
+      }
     } catch {
       toast.error("ไม่สามารถล็อกอินได้ กรุณาลองใหม่อีกครั้ง", { id: loadingToast });
     } finally {

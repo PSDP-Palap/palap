@@ -1,6 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Navigate, redirect } from "@tanstack/react-router";
 
-import AdminDashboard from "@/components/admin/DashboardPage";
 import BannerSection from "@/components/home/BannerSection";
 import HeaderSection from "@/components/home/HeaderSection";
 import RecommendSection from "@/components/home/RecommendSection";
@@ -8,15 +7,32 @@ import ServiceSection from "@/components/home/ServiceSection";
 import { useUserStore } from "@/stores/useUserStore";
 
 export const Route = createFileRoute("/")({
+  beforeLoad: async () => {
+    const { initialize, isInitialized, fetchProfile } = useUserStore.getState();
+
+    if (!isInitialized) {
+      await initialize();
+    }
+
+    let updatedProfile = useUserStore.getState().profile;
+
+    if (!updatedProfile) {
+      updatedProfile = await fetchProfile();
+    }
+
+    if (updatedProfile?.role === "admin") {
+      throw redirect({ to: "/management/admin" });
+    }
+  },
   component: RouteComponent
 });
 
 function RouteComponent() {
   const { profile } = useUserStore();
 
-  // If Admin, show Admin Dashboard
+  // If Admin, redirect to Management (Reactive fallback)
   if (profile?.role === "admin") {
-    return <AdminDashboard />;
+    return <Navigate to="/management/admin" />;
   }
 
   // If Freelance, show Freelance Dashboard
