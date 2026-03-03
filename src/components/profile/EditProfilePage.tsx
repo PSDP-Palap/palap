@@ -39,7 +39,7 @@ const EditProfilePage = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
     const loadingToast = toast.loading("Saving changes...");

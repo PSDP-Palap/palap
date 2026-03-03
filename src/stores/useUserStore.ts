@@ -37,6 +37,22 @@ export const useUserStore = create<UserState>((set, get) => ({
       set({ session });
 
       if (session) {
+        const roleFromMeta = session.user.app_metadata?.role as UserRole;
+
+        if (roleFromMeta === "admin") {
+          const adminProfile: Profile = {
+            id: session.user.id,
+            email: session.user.email || "",
+            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
+            role: "admin",
+            phone_number: null,
+            created_at: session.user.created_at,
+            address: null
+          };
+          set({ profile: adminProfile });
+          return adminProfile;
+        }
+
         const { data: profile } = await supabase
           .from("profiles")
           .select("*")
@@ -52,22 +68,21 @@ export const useUserStore = create<UserState>((set, get) => ({
           address = customer?.address;
         }
 
-        const roleFromMeta = session.user.app_metadata?.role as UserRole;
         const finalProfile = profile
           ? ({
-              ...profile,
-              role: roleFromMeta || profile.role,
-              address
-            } as Profile)
+            ...profile,
+            role: roleFromMeta || profile.role,
+            address
+          } as Profile)
           : ({
-              id: session.user.id,
-              email: session.user.email || "",
-              full_name: session.user.user_metadata?.full_name || "",
-              role: roleFromMeta || "customer",
-              phone_number: null,
-              created_at: new Date().toISOString(),
-              address: null
-            } as Profile);
+            id: session.user.id,
+            email: session.user.email || "",
+            full_name: session.user.user_metadata?.full_name || "",
+            role: roleFromMeta || "customer",
+            phone_number: null,
+            created_at: session.user.created_at || new Date().toISOString(),
+            address: null
+          } as Profile);
 
         set({ profile: finalProfile });
         return finalProfile;
@@ -84,43 +99,66 @@ export const useUserStore = create<UserState>((set, get) => ({
 
     try {
       // 1. Get initial session
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
       set({ session });
 
       // 2. If session exists, fetch profile
       if (session) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .single();
-
-        let address = null;
-        if (profile?.role === "customer") {
-          const { data: customer } = await supabase
-            .from("customers")
-            .select("address")
-            .eq("id", profile.id)
-            .single();
-          address = customer?.address;
-        }
-
-        // Merge profile data with role from app_metadata if available
         const roleFromMeta = session.user.app_metadata?.role as UserRole;
-        if (profile) {
-          set({ profile: { ...profile, role: roleFromMeta || profile.role, address } });
-        } else {
-          // Fallback if profile doesn't exist yet
+
+        // If admin, skip profile fetch and use session data
+        if (roleFromMeta === "admin") {
           set({
             profile: {
               id: session.user.id,
               email: session.user.email || "",
-              full_name: session.user.user_metadata?.full_name || "",
-              role: roleFromMeta || "customer",
+              full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
+              role: "admin",
               phone_number: null,
-              created_at: new Date().toISOString(),
+              created_at: session.user.created_at,
               address: null
             } as Profile
           });
+        } else {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("*")
+            .single();
+
+          let address = null;
+          if (profile?.role === "customer") {
+            const { data: customer } = await supabase
+              .from("customers")
+              .select("address")
+              .eq("id", profile.id)
+              .single();
+            address = customer?.address;
+          }
+
+          if (profile) {
+            set({
+              profile: {
+                ...profile,
+                role: roleFromMeta || profile.role,
+                address
+              }
+            });
+          } else {
+            // Fallback if profile doesn't exist yet
+            set({
+              profile: {
+                id: session.user.id,
+                email: session.user.email || "",
+                full_name: session.user.user_metadata?.full_name || "",
+                role: roleFromMeta || "customer",
+                phone_number: null,
+                created_at: session.user.created_at || new Date().toISOString(),
+                address: null
+              } as Profile
+            });
+          }
         }
       }
     } catch (error) {
@@ -133,25 +171,52 @@ export const useUserStore = create<UserState>((set, get) => ({
     supabase.auth.onAuthStateChange(async (event, session) => {
       set({ session });
 
-      if (event === "SIGNED_IN" || event === "USER_UPDATED" || event === "TOKEN_REFRESHED") {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .single();
+      if (
+        event === "SIGNED_IN" ||
+        event === "USER_UPDATED" ||
+        event === "TOKEN_REFRESHED"
+      ) {
+        if (session) {
+          const roleFromMeta = session.user.app_metadata?.role as UserRole;
 
-        let address = null;
-        if (profile?.role === "customer") {
-          const { data: customer } = await supabase
-            .from("customers")
-            .select("address")
-            .eq("id", profile.id)
-            .single();
-          address = customer?.address;
-        }
+          if (roleFromMeta === "admin") {
+            set({
+              profile: {
+                id: session.user.id,
+                email: session.user.email || "",
+                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
+                role: "admin",
+                phone_number: null,
+                created_at: session.user.created_at,
+                address: null
+              } as Profile
+            });
+          } else {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("*")
+              .single();
 
-        const roleFromMeta = session?.user?.app_metadata?.role as UserRole;
-        if (profile) {
-          set({ profile: { ...profile, role: roleFromMeta || profile.role, address } });
+            let address = null;
+            if (profile?.role === "customer") {
+              const { data: customer } = await supabase
+                .from("customers")
+                .select("address")
+                .eq("id", profile.id)
+                .single();
+              address = customer?.address;
+            }
+
+            if (profile) {
+              set({
+                profile: {
+                  ...profile,
+                  role: roleFromMeta || profile.role,
+                  address
+                }
+              });
+            }
+          }
         }
       } else if (event === "SIGNED_OUT") {
         set({ profile: null });
