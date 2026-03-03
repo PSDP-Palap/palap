@@ -10,7 +10,8 @@
     "**/routeTree.gen.ts": true
   },
   "files.readonlyInclude": {
-    "**/routeTree.gen.ts": true
+    "**/routeTree.gen.ts": true,
+    ".env.example": true
   },
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "always"
