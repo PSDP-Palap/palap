@@ -3,6 +3,7 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { useEffect } from "react";
 import { Toaster } from "react-hot-toast";
 
+import FloatingChatWidget from "@/components/chat/FloatingChatWidget";
 import Navbar from "@/components/Navbar";
 import { useUserStore } from "@/stores/useUserStore";
 
@@ -32,6 +33,7 @@ function RootLayout() {
       <main>
         <Outlet />
       </main>
+      <FloatingChatWidget />
       <TanStackRouterDevtools />
     </>
   );
