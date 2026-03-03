@@ -1,4 +1,4 @@
-import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { createRootRoute, Outlet, useLocation } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { useEffect } from "react";
 import { Toaster } from "react-hot-toast";
@@ -12,6 +12,8 @@ export const Route = createRootRoute({
 
 function RootLayout() {
   const { isLoading, initialize } = useUserStore();
+  const location = useLocation();
+  const isManagement = location.pathname.startsWith("/management");
 
   useEffect(() => {
     initialize();
@@ -28,7 +30,7 @@ function RootLayout() {
   return (
     <>
       <Toaster position="bottom-right" reverseOrder={false} />
-      <Navbar />
+      {!isManagement && <Navbar />}
       <main>
         <Outlet />
       </main>

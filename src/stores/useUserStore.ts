@@ -13,6 +13,7 @@ interface UserState {
 
   setSession: (session: Session | null) => void;
   setProfile: (profile: Profile | null) => void;
+  fetchProfile: () => Promise<Profile | null>;
   initialize: () => Promise<void>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: any }>;
@@ -27,6 +28,56 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile }),
+
+  fetchProfile: async () => {
+    try {
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
+      set({ session });
+
+      if (session) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .single();
+
+        let address = null;
+        if (profile?.role === "customer") {
+          const { data: customer } = await supabase
+            .from("customers")
+            .select("address")
+            .eq("id", profile.id)
+            .single();
+          address = customer?.address;
+        }
+
+        const roleFromMeta = session.user.app_metadata?.role as UserRole;
+        const finalProfile = profile
+          ? ({
+              ...profile,
+              role: roleFromMeta || profile.role,
+              address
+            } as Profile)
+          : ({
+              id: session.user.id,
+              email: session.user.email || "",
+              full_name: session.user.user_metadata?.full_name || "",
+              role: roleFromMeta || "customer",
+              phone_number: null,
+              created_at: new Date().toISOString(),
+              address: null
+            } as Profile);
+
+        set({ profile: finalProfile });
+        return finalProfile;
+      }
+      return null;
+    } catch (error) {
+      console.error("fetchProfile failed:", error);
+      return null;
+    }
+  },
 
   initialize: async () => {
     if (get().isInitialized) return;
