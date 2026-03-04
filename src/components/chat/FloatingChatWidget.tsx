@@ -1,4 +1,4 @@
-import { useRouter } from "@tanstack/react-router";
+import { useRouter, useRouterState } from "@tanstack/react-router";
 import { MessageCircle, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -12,9 +12,27 @@ type ConversationItem = {
   partnerId: string;
   partnerName: string;
   partnerAvatarUrl: string | null;
+  customerName: string;
+  customerAvatarUrl: string | null;
+  freelancerName: string;
+  freelancerAvatarUrl: string | null;
   lastMessage: string;
   lastAt: string;
   serviceName: string;
+};
+
+type StoredMockRoom = {
+  roomId: string;
+  serviceId: string;
+  customerId: string;
+  freelancerId: string;
+  customerName: string;
+  customerAvatarUrl: string | null;
+  freelancerName: string;
+  freelancerAvatarUrl: string | null;
+  serviceName: string;
+  lastMessage: string;
+  lastAt: string;
 };
 
 const formatTime = (isoDate: string) => {
@@ -28,10 +46,27 @@ const formatTime = (isoDate: string) => {
   });
 };
 
+const isSystemMessage = (message: string | null | undefined) => {
+  if (!message) return false;
+  return message.startsWith("[SYSTEM_HIRE_REQUEST]") || message.startsWith("[SYSTEM_HIRE_ACCEPTED]");
+};
+
+const cleanPreviewMessage = (message: string | null | undefined) => {
+  if (!message) return "No message yet";
+  return message
+    .replace("[SYSTEM_HIRE_REQUEST]", "")
+    .replace("[SYSTEM_HIRE_ACCEPTED]", "")
+    .trim() || "No message yet";
+};
+
 function FloatingChatWidget() {
   const router = useRouter();
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
   const { profile, session, isInitialized } = useUserStore();
   const userId = profile?.id || session?.user?.id || null;
+  const isCheckoutFooterPage = pathname === "/product";
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -63,11 +98,7 @@ function FloatingChatWidget() {
         const roomIds = roomRows.map((item) => String(item.id));
         const partnerIds = Array.from(
           new Set(
-            roomRows.map((item) =>
-              String(item.customer_id) === String(userId)
-                ? String(item.freelancer_id)
-                : String(item.customer_id)
-            )
+            roomRows.flatMap((item) => [String(item.customer_id), String(item.freelancer_id)])
           )
         );
         const serviceIds = Array.from(new Set(roomRows.map((item) => String(item.service_id))));
@@ -83,12 +114,13 @@ function FloatingChatWidget() {
         const latestMessageByRoom = new Map<string, { message: string; created_at: string }>();
         (messageRows ?? []).forEach((row: any) => {
           const key = String(row.room_id);
-          if (!latestMessageByRoom.has(key)) {
-            latestMessageByRoom.set(key, {
-              message: row.message ?? "",
-              created_at: row.created_at,
-            });
-          }
+          if (latestMessageByRoom.has(key)) return;
+          if (isSystemMessage(row.message)) return;
+
+          latestMessageByRoom.set(key, {
+            message: row.message ?? "",
+            created_at: row.created_at,
+          });
         });
 
         const [{ data: profileRows }, { data: serviceRows }] = await Promise.all([
@@ -123,6 +155,8 @@ function FloatingChatWidget() {
             ? String(item.freelancer_id)
             : String(item.customer_id);
           const partner = profileMap.get(partnerId);
+          const customer = profileMap.get(String(item.customer_id));
+          const freelancer = profileMap.get(String(item.freelancer_id));
           const latest = latestMessageByRoom.get(roomId);
 
           return {
@@ -132,13 +166,65 @@ function FloatingChatWidget() {
             partnerId,
             partnerName: partner?.name || "Freelance user",
             partnerAvatarUrl: partner?.avatarUrl || null,
-            lastMessage: latest?.message || "No message yet",
+            customerName: customer?.name || "Customer",
+            customerAvatarUrl: customer?.avatarUrl || null,
+            freelancerName: freelancer?.name || "Freelance",
+            freelancerAvatarUrl: freelancer?.avatarUrl || null,
+            lastMessage: cleanPreviewMessage(latest?.message),
             lastAt: latest?.created_at || item.last_message_at || new Date().toISOString(),
             serviceName: serviceMap.get(serviceId) || "Service",
           };
         });
 
-        setConversations(mapped);
+        let mockConversations: ConversationItem[] = [];
+        if (typeof window !== "undefined") {
+          try {
+            const raw = window.localStorage.getItem("mock_service_chat_rooms");
+            const parsed = raw ? JSON.parse(raw) : [];
+            const rows: StoredMockRoom[] = Array.isArray(parsed) ? parsed : [];
+
+            mockConversations = rows
+              .filter((item) =>
+                String(item.customerId) === String(userId) ||
+                String(item.freelancerId) === String(userId)
+              )
+              .map((item) => {
+                const partnerId = String(item.customerId) === String(userId)
+                  ? String(item.freelancerId)
+                  : String(item.customerId);
+                const isUserCustomer = String(item.customerId) === String(userId);
+
+                return {
+                  key: String(item.roomId),
+                  roomId: String(item.roomId),
+                  serviceId: String(item.serviceId),
+                  partnerId,
+                  partnerName: isUserCustomer ? item.freelancerName : item.customerName,
+                  partnerAvatarUrl: isUserCustomer ? item.freelancerAvatarUrl : item.customerAvatarUrl,
+                  customerName: item.customerName,
+                  customerAvatarUrl: item.customerAvatarUrl,
+                  freelancerName: item.freelancerName,
+                  freelancerAvatarUrl: item.freelancerAvatarUrl,
+                  lastMessage: cleanPreviewMessage(item.lastMessage),
+                  lastAt: item.lastAt || new Date().toISOString(),
+                  serviceName: item.serviceName || "Service",
+                };
+              });
+          } catch {
+            mockConversations = [];
+          }
+        }
+
+        const mergedMap = new Map<string, ConversationItem>();
+        [...mapped, ...mockConversations]
+          .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
+          .forEach((item) => {
+            if (!mergedMap.has(item.roomId)) {
+              mergedMap.set(item.roomId, item);
+            }
+          });
+
+        setConversations(Array.from(mergedMap.values()));
       } catch {
         if (active) setConversations([]);
       } finally {
@@ -166,8 +252,14 @@ function FloatingChatWidget() {
       )
       .subscribe();
 
+    const handleExternalChatUpdate = () => {
+      loadConversations();
+    };
+    window.addEventListener("service-chat-updated", handleExternalChatUpdate);
+
     return () => {
       active = false;
+      window.removeEventListener("service-chat-updated", handleExternalChatUpdate);
       supabase.removeChannel(channel);
     };
   }, [userId, isInitialized]);
@@ -176,6 +268,8 @@ function FloatingChatWidget() {
     const query = search.trim().toLowerCase();
     if (!query) return conversations;
     return conversations.filter((item) =>
+      item.customerName.toLowerCase().includes(query) ||
+      item.freelancerName.toLowerCase().includes(query) ||
       item.partnerName.toLowerCase().includes(query) ||
       item.serviceName.toLowerCase().includes(query) ||
       item.lastMessage.toLowerCase().includes(query)
@@ -185,7 +279,9 @@ function FloatingChatWidget() {
   if (!userId || !isInitialized) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-[80]">
+    <div className={isCheckoutFooterPage
+      ? "fixed bottom-[112px] right-6 md:right-8 z-[80]"
+      : "fixed bottom-24 right-4 md:bottom-6 md:right-6 z-[80]"}>
       {open && (
         <div className="w-[360px] max-w-[calc(100vw-2rem)] max-h-[70vh] bg-[#F9E6D8] text-[#4A2600] rounded-2xl border border-orange-200 shadow-2xl mb-3 overflow-hidden">
           <div className="px-4 py-4 border-b border-orange-200 bg-[#FF914D] flex items-center justify-between">
@@ -212,8 +308,6 @@ function FloatingChatWidget() {
           </div>
 
           <div className="overflow-y-auto max-h-[52vh]">
-            {loading && <p className="px-4 py-5 text-sm text-[#4A2600]/70">Loading chats...</p>}
-
             {!loading && filteredConversations.length === 0 && (
               <p className="px-4 py-5 text-sm text-[#4A2600]/70">No chat found.</p>
             )}
@@ -232,12 +326,21 @@ function FloatingChatWidget() {
                 }}
                 className="w-full text-left px-4 py-3 hover:bg-orange-100/60 transition-colors flex items-center gap-3 border-b border-orange-100"
               >
-                <div className="w-12 h-12 rounded-full bg-orange-100 border border-orange-200 overflow-hidden flex items-center justify-center text-sm font-black text-[#4A2600]">
-                  {chat.partnerAvatarUrl ? (
-                    <img src={chat.partnerAvatarUrl} alt={chat.partnerName} className="w-full h-full object-cover" />
-                  ) : (
-                    chat.partnerName.charAt(0).toUpperCase()
-                  )}
+                <div className="relative w-14 h-12 shrink-0">
+                  <div className="absolute left-0 top-1 w-9 h-9 rounded-full bg-orange-100 border border-orange-200 overflow-hidden flex items-center justify-center text-xs font-black text-[#4A2600]">
+                    {chat.customerAvatarUrl ? (
+                      <img src={chat.customerAvatarUrl} alt={chat.customerName} className="w-full h-full object-cover" />
+                    ) : (
+                      chat.customerName.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div className="absolute right-0 top-1 w-9 h-9 rounded-full bg-orange-100 border border-orange-200 overflow-hidden flex items-center justify-center text-xs font-black text-[#4A2600]">
+                    {chat.freelancerAvatarUrl ? (
+                      <img src={chat.freelancerAvatarUrl} alt={chat.freelancerName} className="w-full h-full object-cover" />
+                    ) : (
+                      chat.freelancerName.charAt(0).toUpperCase()
+                    )}
+                  </div>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
