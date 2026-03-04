@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Toaster } from "react-hot-toast";
 
 import FloatingChatWidget from "@/components/chat/FloatingChatWidget";
+import GlobalOrderTrackingWidget from "@/components/tracking/GlobalOrderTrackingWidget";
 import Navbar from "@/components/Navbar";
 import { useUserStore } from "@/stores/useUserStore";
 
@@ -33,6 +34,7 @@ function RootLayout() {
       <main>
         <Outlet />
       </main>
+      <GlobalOrderTrackingWidget />
       <FloatingChatWidget />
       <TanStackRouterDevtools />
     </>
