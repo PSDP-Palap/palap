@@ -86,17 +86,24 @@ function ServicePage() {
       }));
 
       const validServices = mapped.filter((item) => item.id);
+      const visibleServices = validServices.filter((item) => {
+        const category = String(item.category || "").toUpperCase();
+        const name = String(item.name || "").toLowerCase();
+        const looksLikeOrderSession = name.includes("order session");
+
+        return category !== "DELIVERY_SESSION" && !looksLikeOrderSession;
+      });
 
       const creatorIds = Array.from(
         new Set(
-          validServices
+          visibleServices
             .map((item) => item.creator_id)
             .filter((value): value is string => Boolean(value))
         )
       );
 
       if (creatorIds.length === 0) {
-        setServices(validServices);
+        setServices(visibleServices);
         return;
       }
 
@@ -108,7 +115,7 @@ function ServicePage() {
       );
 
       if (creatorError) {
-        setServices(validServices);
+        setServices(visibleServices);
         return;
       }
 
@@ -122,7 +129,7 @@ function ServicePage() {
         ])
       );
 
-      const enrichedServices = validServices.map((item) => {
+      const enrichedServices = visibleServices.map((item) => {
         const creator = item.creator_id ? creatorMap.get(String(item.creator_id)) : null;
         return {
           ...item,
