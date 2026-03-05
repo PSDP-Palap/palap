@@ -5,52 +5,27 @@ import { Search } from "lucide-react";
 import supabase from "@/utils/supabase";
 import { ServiceCard } from "@/components/service/ServiceCard";
 import type { Service } from "@/types/service";
-import { withTimeout } from "@/utils/helpers";
 
 const DEFAULT_DESCRIPTION = "Reliable and professional pet service tailored for your needs.";
 const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1517849845537-4d257902454a?q=80&w=1200&auto=format&fit=crop";
 
 export const Route = createFileRoute("/service/")({
-  loader: async ({ abortController }) => {
+  loader: async () => {
     console.log("[Router] Service loader started");
 
-    const fetchWithRetry = async (retries = 1): Promise<any> => {
-      try {
-        const { data, error } = await withTimeout(
-          async () => {
-            console.log("[Supabase] Executing service query...");
-            return supabase
-              .from("services")
-              .select("*")
-              .neq("category", "DELIVERY_SESSION")
-              .order("created_at", { ascending: false })
-              .limit(100)
-              .abortSignal(abortController.signal);
-          },
-          15000,
-          "Service Query"
-        );
+    const { data, error } = await supabase
+      .from("services")
+      .select("*")
+      .neq("category", "DELIVERY_SESSION")
+      .order("created_at", { ascending: false })
+      .limit(100);
 
-        if (error) throw error;
-        return data;
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
-          console.log("[Router] Service fetch aborted");
-          return null;
-        }
-        if (retries > 0) {
-          console.warn("[Router] Service loader failed, retrying in 1s...");
-          await new Promise(res => setTimeout(res, 1000));
-          return fetchWithRetry(retries - 1);
-        }
-        throw err;
-      }
-    };
+    if (error) {
+      console.error("[Router] Supabase error fetching services:", error);
+      throw error;
+    }
 
-    const data = await fetchWithRetry();
-    if (!data) return { services: [] };
-
-    console.log("[Router] Service loader finished, data length:", data?.length);
+    console.log("[Router] Service loader finished, count:", data?.length);
 
     const visibleServices: Service[] = (data ?? [])
       .map((item: any) => ({
@@ -97,14 +72,12 @@ export const Route = createFileRoute("/service/")({
 
 function RouteComponent() {
   const { services: initialServices } = Route.useLoaderData();
-  const [services, setServices] = useState<Service[]>(initialServices || []);
+  const [services, setServices] = useState<Service[]>(initialServices);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Sync services if loader data changes
   useEffect(() => {
-    if (initialServices) {
-      setServices(initialServices);
-    }
+    setServices(initialServices);
   }, [initialServices]);
 
   const filteredServices = services.filter((service) => {

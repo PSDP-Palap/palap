@@ -8,48 +8,24 @@ import { useCartStore } from "@/stores/useCartStore";
 import { ProductCard } from "@/components/product/ProductCard";
 import { CartFooter } from "@/components/product/CartFooter";
 import type { Product } from "@/types/product";
-import { withTimeout } from "@/utils/helpers";
 
 export const Route = createFileRoute("/product/")({
-  loader: async ({ abortController }) => {
+  loader: async () => {
     console.log("[Router] Product loader started");
+    
+    // Direct query without withTimeout, similar to AdminTab fetch pattern
+    const { data, error } = await supabase
+      .from("products")
+      .select("product_id, name, price, qty, image_url")
+      .order("name", { ascending: true })
+      .limit(100);
 
-    const fetchWithRetry = async (retries = 1): Promise<any> => {
-      try {
-        const { data, error } = await withTimeout(
-          async () => {
-            console.log("[Supabase] Executing product query...");
-            return supabase
-              .from("products")
-              .select("product_id, name, price, qty, image_url")
-              .order("name", { ascending: true })
-              .limit(100)
-              .abortSignal(abortController.signal); // Use router's abort signal
-          },
-          15000,
-          "Product Query"
-        );
+    if (error) {
+      console.error("[Router] Supabase error fetching products:", error);
+      throw error;
+    }
 
-        if (error) throw error;
-        return data;
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
-          console.log("[Router] Product fetch aborted");
-          return null;
-        }
-        if (retries > 0) {
-          console.warn("[Router] Product loader failed, retrying in 1s...");
-          await new Promise(res => setTimeout(res, 1000));
-          return fetchWithRetry(retries - 1);
-        }
-        throw err;
-      }
-    };
-
-    const data = await fetchWithRetry();
-    if (!data) return { products: [] };
-
-    console.log("[Router] Product loader finished, data length:", data?.length);
+    console.log("[Router] Product loader finished, count:", data?.length);
 
     const products: Product[] = (data || []).map((item: any) => ({
       id: String(item.product_id),
@@ -90,7 +66,7 @@ export const Route = createFileRoute("/product/")({
 
 function RouteComponent() {
   const { products: initialProducts } = Route.useLoaderData();
-  const [products, setProducts] = useState<Product[]>(initialProducts || []);
+  const [products, setProducts] = useState<Product[]>(initialProducts);
   const [searchQuery, setSearchQuery] = useState("");
 
   // global cart state
@@ -101,9 +77,7 @@ function RouteComponent() {
 
   // Sync products if loader data changes
   useEffect(() => {
-    if (initialProducts) {
-      setProducts(initialProducts);
-    }
+    setProducts(initialProducts);
   }, [initialProducts]);
 
   const totalPrice = Object.entries(cartItems).reduce((sum, [id, qty]) => {
