@@ -5,6 +5,18 @@ import { create } from "zustand";
 import type { Profile, UserRole } from "@/types/user";
 import supabase from "@/utils/supabase";
 
+const isColumnMissingError = (error: any) => {
+  const message = String(error?.message || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+  return (
+    code === "pgrst204" ||
+    code === "42703" ||
+    message.includes("column") ||
+    message.includes("does not exist") ||
+    message.includes("could not find")
+  );
+};
+
 interface UserState {
   session: Session | null;
   profile: Profile | null;
@@ -48,10 +60,23 @@ export const useUserStore = create<UserState>((set, get) => ({
         if (profile?.role === "customer") {
           const { data: customer } = await supabase
             .from("customers")
-            .select("address")
+            .select("address_id")
             .eq("id", profile.id)
             .maybeSingle();
-          address = customer?.address;
+
+          const addressId = customer?.address_id ? String(customer.address_id) : null;
+          if (addressId) {
+            const { data: addressRow } = await supabase
+              .from("addresses")
+              .select("id, name, address_detail")
+              .eq("id", addressId)
+              .maybeSingle();
+
+            address =
+              addressRow?.address_detail ||
+              addressRow?.name ||
+              null;
+          }
         }
 
         // Merge profile data with role from app_metadata if available
@@ -99,10 +124,23 @@ export const useUserStore = create<UserState>((set, get) => ({
         if (profile?.role === "customer") {
           const { data: customer } = await supabase
             .from("customers")
-            .select("address")
+            .select("address_id")
             .eq("id", profile.id)
             .maybeSingle();
-          address = customer?.address;
+
+          const addressId = customer?.address_id ? String(customer.address_id) : null;
+          if (addressId) {
+            const { data: addressRow } = await supabase
+              .from("addresses")
+              .select("id, name, address_detail")
+              .eq("id", addressId)
+              .maybeSingle();
+
+            address =
+              addressRow?.address_detail ||
+              addressRow?.name ||
+              null;
+          }
         }
 
         const roleFromMeta = session?.user?.app_metadata?.role as UserRole;
@@ -137,17 +175,123 @@ export const useUserStore = create<UserState>((set, get) => ({
     if (profile.role === "customer" && address !== undefined) {
       console.log("Updating customers table for ID:", profile.id);
 
-      const { error: customerError } = await supabase
+      // Read current linked address id (if any)
+      const { data: customerRow } = await supabase
         .from("customers")
-        .upsert({
-          id: profile.id,
-          address,
-          updated_at: new Date().toISOString()
-        });
+        .select("address_id")
+        .eq("id", profile.id)
+        .maybeSingle();
 
-      if (customerError) {
-        console.error("Error updating customers table:", customerError);
-        return { error: customerError };
+      const existingAddressId = customerRow?.address_id
+        ? String(customerRow.address_id)
+        : null;
+
+      let nextAddressId = existingAddressId;
+
+      if (existingAddressId) {
+        // Update existing address detail
+        const { error: updateAddressError } = await supabase
+          .from("addresses")
+          .update({ address_detail: address })
+          .eq("id", existingAddressId);
+
+        if (updateAddressError && !isColumnMissingError(updateAddressError)) {
+          console.error("Error updating addresses table:", updateAddressError);
+          return {
+            error:
+              updateAddressError?.message ||
+              "Failed to update customer address information."
+          };
+        }
+      } else {
+        // Create a new address row and link it to customer
+        const insertCandidates = [
+          {
+            name: "Home",
+            address_detail: address,
+            profile_id: profile.id
+          },
+          {
+            name: "Home",
+            address_detail: address
+          }
+        ];
+
+        let createdAddressId: string | null = null;
+        let createAddressError: any = null;
+
+        for (const payload of insertCandidates) {
+          const result = await supabase
+            .from("addresses")
+            .insert([payload])
+            .select("id")
+            .maybeSingle();
+
+          if (!result.error && result.data?.id) {
+            createdAddressId = String(result.data.id);
+            createAddressError = null;
+            break;
+          }
+
+          createAddressError = result.error;
+          if (result.error && !isColumnMissingError(result.error)) {
+            break;
+          }
+        }
+
+        if (!createdAddressId) {
+          console.error("Error creating addresses row:", createAddressError);
+          return {
+            error:
+              createAddressError?.message ||
+              "Failed to create customer address information."
+          };
+        }
+
+        nextAddressId = createdAddressId;
+      }
+
+      if (nextAddressId) {
+        const customerPayloads = [
+          {
+            id: profile.id,
+            address_id: nextAddressId,
+            updated_at: new Date().toISOString()
+          },
+          {
+            id: profile.id,
+            address_id: nextAddressId
+          }
+        ];
+
+        let customerError: any = null;
+        let customerUpdated = false;
+
+        for (const payload of customerPayloads) {
+          const result = await supabase
+            .from("customers")
+            .upsert(payload, { onConflict: "id" });
+
+          if (!result.error) {
+            customerUpdated = true;
+            customerError = null;
+            break;
+          }
+
+          customerError = result.error;
+          if (!isColumnMissingError(result.error)) {
+            break;
+          }
+        }
+
+        if (!customerUpdated && customerError) {
+          console.error("Error updating customers table:", customerError);
+          return {
+            error:
+              customerError?.message ||
+              "Failed to update customer address information."
+          };
+        }
       }
     }
 

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useRouter, useRouterState } from "@tanstack/react-router";
 import { MessageCircle, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useUserStore } from "@/stores/useUserStore";
 import { cleanPreviewMessage, isSystemMessage, withTimeout } from "@/utils/helpers";
@@ -23,6 +23,18 @@ interface ConversationItem {
   serviceName: string;
 }
 
+const resolveCustomerId = (room: any) =>
+  String(room?.customer_id ?? room?.user_id ?? "");
+
+const resolveFreelancerId = (room: any) =>
+  String(room?.freelancer_id ?? room?.freelance_id ?? "");
+
+const resolveOrderCustomerId = (order: any) =>
+  String(order?.customer_id ?? order?.user_id ?? "");
+
+const resolveOrderFreelancerId = (order: any) =>
+  String(order?.freelancer_id ?? order?.freelance_id ?? "");
+
 const FloatingChatWidget = () => {
   const router = useRouter();
   const { pathname } = useRouterState({ select: (s) => ({ pathname: s.location.pathname }) });
@@ -34,6 +46,7 @@ const FloatingChatWidget = () => {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [readByRoom, setReadByRoom] = useState<Record<string, string>>({});
 
   const isFetchingRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
@@ -42,6 +55,77 @@ const FloatingChatWidget = () => {
 
   const isCheckoutFooterPage = pathname === "/order-summary" || pathname === "/payment";
   const isActiveChatPage = pathname.startsWith("/chat/");
+  const activeChatRoomId = useMemo(() => {
+    if (!isActiveChatPage) return null;
+    const raw = pathname.split("/chat/")[1] || "";
+    const roomId = decodeURIComponent(raw.split("/")[0] || "").trim();
+    return roomId || null;
+  }, [pathname, isActiveChatPage]);
+
+  const readStorageKey = useMemo(
+    () => `floating_chat_read_at:${String(userId || "")}`,
+    [userId]
+  );
+
+  const toTimestamp = (value: string | null | undefined) => {
+    const ts = Date.parse(String(value || ""));
+    return Number.isFinite(ts) ? ts : 0;
+  };
+
+  const persistReadMap = useCallback(
+    (nextMap: Record<string, string>) => {
+      if (typeof window === "undefined" || !userId) return;
+      try {
+        window.localStorage.setItem(readStorageKey, JSON.stringify(nextMap));
+      } catch {
+        // Ignore storage write failures.
+      }
+    },
+    [readStorageKey, userId]
+  );
+
+  const markRoomAsRead = useCallback(
+    (roomId: string, lastSeenAt?: string | null) => {
+      const normalizedRoomId = String(roomId || "").trim();
+      if (!normalizedRoomId) return;
+
+      const seenAt = String(lastSeenAt || new Date().toISOString());
+      setReadByRoom((prev) => {
+        const prevTs = toTimestamp(prev[normalizedRoomId]);
+        const seenTs = toTimestamp(seenAt);
+        if (prevTs >= seenTs) {
+          return prev;
+        }
+
+        const next = {
+          ...prev,
+          [normalizedRoomId]: seenAt,
+        };
+        persistReadMap(next);
+        return next;
+      });
+    },
+    [persistReadMap]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !userId) {
+      setReadByRoom({});
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(readStorageKey);
+      if (!raw) {
+        setReadByRoom({});
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      setReadByRoom(parsed && typeof parsed === "object" ? parsed : {});
+    } catch {
+      setReadByRoom({});
+    }
+  }, [readStorageKey, userId]);
 
   const isColumnMissingError = (error: any) => {
     const message = String(error?.message || "").toLowerCase();
@@ -82,6 +166,7 @@ const FloatingChatWidget = () => {
 
         let rooms: any[] | null = null;
         let roomError: any = null;
+        let resolvedProfileRows: any[] = [];
 
         const roomQueryVariants = [
           {
@@ -91,8 +176,18 @@ const FloatingChatWidget = () => {
           {
             select: "id, order_id, customer_id, freelance_id, last_message_at",
             filter: `customer_id.eq.${userId},freelance_id.eq.${userId}`
+          },
+          {
+            select: "id, order_id, user_id, freelancer_id, last_message_at",
+            filter: `user_id.eq.${userId},freelancer_id.eq.${userId}`
+          },
+          {
+            select: "id, order_id, user_id, freelance_id, last_message_at",
+            filter: `user_id.eq.${userId},freelance_id.eq.${userId}`
           }
         ];
+
+        let bestScore = -1;
 
         for (const variant of roomQueryVariants) {
           const result = await withTimeout(
@@ -106,9 +201,118 @@ const FloatingChatWidget = () => {
           );
 
           if (!result.error) {
-            rooms = (result.data as any[]) ?? [];
-            roomError = null;
-            break;
+            const candidateRooms = (result.data as any[]) ?? [];
+
+            if (candidateRooms.length === 0) {
+              if (bestScore < 0) {
+                rooms = [];
+                roomError = null;
+                bestScore = 0;
+              }
+              continue;
+            }
+
+            const hasUsableParticipants = candidateRooms.some((room) => {
+              const customerId = resolveCustomerId(room);
+              const freelancerId = resolveFreelancerId(room);
+              if (!customerId || !freelancerId) return false;
+              return (
+                String(customerId) === String(userId) ||
+                String(freelancerId) === String(userId)
+              );
+            });
+
+            if (!hasUsableParticipants) {
+              continue;
+            }
+
+            const candidateOrderIds = Array.from(
+              new Set(
+                candidateRooms
+                  .map((room) => String(room?.order_id || ""))
+                  .filter(Boolean)
+              )
+            );
+
+            const { data: candidateOrderRows } = candidateOrderIds.length
+              ? await withTimeout(
+                  supabase
+                    .from("orders")
+                    .select("order_id, customer_id, freelancer_id, freelance_id")
+                    .in("order_id", candidateOrderIds),
+                  12000
+                )
+              : { data: [] as any[] };
+
+            const candidateOrderMap = new Map(
+              ((candidateOrderRows as any[]) ?? []).map((row: any) => [
+                String(row.order_id || ""),
+                row,
+              ])
+            );
+
+            const candidatePartnerIds = candidateRooms
+              .map((room) => {
+                const orderRow = candidateOrderMap.get(
+                  String(room?.order_id || "")
+                );
+                const customerId =
+                  resolveCustomerId(room) || resolveOrderCustomerId(orderRow);
+                const freelancerId =
+                  resolveFreelancerId(room) ||
+                  resolveOrderFreelancerId(orderRow);
+                return String(customerId) === String(userId)
+                  ? freelancerId
+                  : customerId;
+              })
+              .filter(Boolean);
+
+            let candidateProfileRows: any[] = [];
+            if (candidatePartnerIds.length > 0) {
+              const profileResult = await withTimeout(
+                supabase.from("profiles").select("*").in("id", candidatePartnerIds),
+                12000
+              );
+
+              if (profileResult.error) {
+                const fallbackPartnerIds = candidatePartnerIds.filter((id) =>
+                  isUuidLike(String(id || ""))
+                );
+
+                if (fallbackPartnerIds.length > 0) {
+                  const fallbackProfileResult = await withTimeout(
+                    supabase
+                      .from("profiles")
+                      .select("*")
+                      .in("id", fallbackPartnerIds),
+                    12000
+                  );
+
+                  candidateProfileRows =
+                    ((fallbackProfileResult.data as any[]) ?? []).filter(Boolean);
+                }
+              } else {
+                candidateProfileRows =
+                  ((profileResult.data as any[]) ?? []).filter(Boolean);
+              }
+            }
+
+            const score = candidateProfileRows.length;
+            if (score > bestScore) {
+              bestScore = score;
+              rooms = candidateRooms;
+              resolvedProfileRows = candidateProfileRows;
+              roomError = null;
+            }
+
+            const targetScore = new Set(
+              candidatePartnerIds.map((id) => String(id))
+            ).size;
+            if (targetScore > 0 && score >= targetScore) {
+              break;
+            }
+
+            continue;
           }
 
           roomError = result.error;
@@ -129,19 +333,36 @@ const FloatingChatWidget = () => {
         // Keep rows even if room ids are non-UUID in some environments.
         const roomRows = (rooms as any[]).filter((r) => String(r.id || "").length > 0);
         const roomIds = roomRows.map((item) => String(item.id));
-        const partnerIds = roomRows
-          .map((item) =>
-            String(item.customer_id) === String(userId)
-              ? item.freelancer_id ?? item.freelance_id
-              : item.customer_id
+        const orderIds = Array.from(
+          new Set(
+            roomRows
+              .map((row) => String(row?.order_id || ""))
+              .filter(Boolean)
           )
-          .filter(Boolean);
+        );
+
+        const { data: orderRows } = orderIds.length
+          ? await withTimeout(
+              supabase
+                .from("orders")
+                .select("order_id, customer_id, freelancer_id, freelance_id")
+                .in("order_id", orderIds),
+              12000
+            )
+          : { data: [] as any[] };
+
+        const orderMap = new Map(
+          ((orderRows as any[]) ?? []).map((row: any) => [
+            String(row.order_id || ""),
+            row,
+          ])
+        );
 
         const { data: messageRows } = roomIds.length > 0
           ? await withTimeout(
               supabase
                 .from("chat_messages")
-                .select("room_id, message, created_at")
+                .select("room_id, message, created_at, sender_id")
                 .in("room_id", roomIds)
                 .order("created_at", { ascending: false }),
               12000
@@ -149,6 +370,7 @@ const FloatingChatWidget = () => {
           : { data: [] as any[] };
 
         const latestMessageByRoom = new Map<string, { message: string; created_at: string }>();
+        const latestNonSelfSenderByRoom = new Map<string, string>();
         (messageRows ?? []).forEach((row: any) => {
           const key = String(row.room_id);
           if (latestMessageByRoom.has(key)) return;
@@ -158,37 +380,18 @@ const FloatingChatWidget = () => {
             message: row.message ?? "",
             created_at: row.created_at,
           });
+
+          const senderId = String(row.sender_id || "");
+          if (
+            senderId &&
+            senderId !== String(userId) &&
+            !latestNonSelfSenderByRoom.has(key)
+          ) {
+            latestNonSelfSenderByRoom.set(key, senderId);
+          }
         });
 
-        let profileRows: any[] = [];
-        if (partnerIds.length > 0) {
-          const profileResult = await withTimeout(
-            supabase.from("profiles").select("*").in("id", partnerIds),
-            12000
-          );
-
-          if (profileResult.error) {
-            const fallbackPartnerIds = partnerIds.filter((id) =>
-              isUuidLike(String(id || ""))
-            );
-
-            if (fallbackPartnerIds.length > 0) {
-              const fallbackProfileResult = await withTimeout(
-                supabase
-                  .from("profiles")
-                  .select("*")
-                  .in("id", fallbackPartnerIds),
-                12000
-              );
-
-              profileRows = ((fallbackProfileResult.data as any[]) ?? []).filter(
-                Boolean
-              );
-            }
-          } else {
-            profileRows = ((profileResult.data as any[]) ?? []).filter(Boolean);
-          }
-        }
+        const profileRows = resolvedProfileRows;
 
         if (!active) return;
 
@@ -205,14 +408,19 @@ const FloatingChatWidget = () => {
         const mapped: ConversationItem[] = roomRows.map((item: any) => {
           const roomId = String(item.id);
           const orderId = String(item.order_id);
-          const partnerId = String(item.customer_id) === String(userId)
-            ? String(item.freelancer_id ?? item.freelance_id ?? "")
-            : String(item.customer_id);
+          const orderRow = orderMap.get(orderId);
+          const customerId =
+            resolveCustomerId(item) || resolveOrderCustomerId(orderRow);
+          const freelancerId =
+            resolveFreelancerId(item) || resolveOrderFreelancerId(orderRow);
+          const isCurrentUserCustomer = String(customerId) === String(userId);
+          let partnerId = isCurrentUserCustomer ? freelancerId : customerId;
+          if (!partnerId || String(partnerId) === String(userId)) {
+            partnerId = latestNonSelfSenderByRoom.get(roomId) || partnerId;
+          }
           const partner = profileMap.get(partnerId);
-          const customer = profileMap.get(String(item.customer_id));
-          const freelancer = profileMap.get(
-            String(item.freelancer_id ?? item.freelance_id ?? "")
-          );
+          const customer = profileMap.get(customerId);
+          const freelancer = profileMap.get(freelancerId);
           const latest = latestMessageByRoom.get(roomId);
 
           return {
@@ -222,7 +430,7 @@ const FloatingChatWidget = () => {
             partnerId,
             partnerName:
               partner?.name ||
-              (String(item.customer_id) === String(userId)
+              (isCurrentUserCustomer
                 ? "Freelancer"
                 : "Customer"),
             partnerAvatarUrl: partner?.avatarUrl || null,
@@ -321,6 +529,34 @@ const FloatingChatWidget = () => {
     );
   }, [conversations, search]);
 
+  useEffect(() => {
+    if (!activeChatRoomId) return;
+    const currentConversation = conversations.find(
+      (item) => String(item.roomId) === String(activeChatRoomId)
+    );
+    markRoomAsRead(activeChatRoomId, currentConversation?.lastAt || null);
+  }, [activeChatRoomId, conversations, markRoomAsRead]);
+
+  const hasUnreadConversations = useMemo(() => {
+    return conversations.some((item) => {
+      const lastTs = toTimestamp(item.lastAt);
+      const readTs = toTimestamp(readByRoom[item.roomId]);
+      if (!readByRoom[item.roomId]) return true;
+      return lastTs > readTs;
+    });
+  }, [conversations, readByRoom]);
+
+  const unreadCount = useMemo(() => {
+    return conversations.reduce((count, item) => {
+      const lastTs = toTimestamp(item.lastAt);
+      const readTs = toTimestamp(readByRoom[item.roomId]);
+      if (!readByRoom[item.roomId] || lastTs > readTs) {
+        return count + 1;
+      }
+      return count;
+    }, 0);
+  }, [conversations, readByRoom]);
+
   if (!isInitialized || !userId) return null;
   if (isActiveChatPage) return null;
 
@@ -379,6 +615,7 @@ const FloatingChatWidget = () => {
                   <button
                     key={item.key}
                     onClick={() => {
+                      markRoomAsRead(item.roomId, item.lastAt);
                       setOpen(false);
                       router.navigate({
                         to: "/chat/$id",
@@ -435,7 +672,11 @@ const FloatingChatWidget = () => {
         ) : (
           <div className="relative">
             <MessageCircle className="w-7 h-7 md:w-8 md:h-8 fill-current" />
-            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#FF914D]"></span>
+            {hasUnreadConversations && (
+              <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 bg-red-500 text-white rounded-full border-2 border-[#FF914D] text-[10px] font-black leading-none flex items-center justify-center">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
           </div>
         )}
       </button>

@@ -64,6 +64,12 @@ const getOrderIdFromDeliveryDoneMessage = (message: string) => {
   return match?.[1] ? String(match[1]) : "";
 };
 
+const resolveCustomerId = (room: any) =>
+  String(room?.customer_id ?? room?.user_id ?? "");
+
+const resolveOrderCustomerId = (order: any) =>
+  String(order?.customer_id ?? order?.user_id ?? "");
+
 function MapCenterTracker({ onCenterChange }: MapCenterTrackerProps) {
   const map = useMapEvents({
     moveend: () => {
@@ -1387,12 +1393,68 @@ function RouteComponent() {
       try {
         setLoadingFreelanceChats(true);
 
-        const { data: roomRows, error: roomError } = await supabase
-          .from("chat_rooms")
-          .select("id, order_id, customer_id, freelancer_id, last_message_at")
-          .eq("freelancer_id", currentUserId)
-          .order("last_message_at", { ascending: false })
-          .limit(100);
+        let roomRows: any[] | null = null;
+        let roomError: any = null;
+
+        const roomQueryVariants = [
+          {
+            select: "id, order_id, customer_id, freelancer_id, last_message_at",
+            filterColumn: "freelancer_id"
+          },
+          {
+            select: "id, order_id, customer_id, freelance_id, last_message_at",
+            filterColumn: "freelance_id"
+          },
+          {
+            select: "id, order_id, user_id, freelancer_id, last_message_at",
+            filterColumn: "freelancer_id"
+          },
+          {
+            select: "id, order_id, user_id, freelance_id, last_message_at",
+            filterColumn: "freelance_id"
+          }
+        ];
+
+        for (const variant of roomQueryVariants) {
+          const result = await supabase
+            .from("chat_rooms")
+            .select(variant.select)
+            .eq(variant.filterColumn, currentUserId)
+            .order("last_message_at", { ascending: false })
+            .limit(100);
+
+          if (!result.error) {
+            const candidateRows = (result.data as any[]) ?? [];
+
+            if (candidateRows.length === 0) {
+              // Do not stop on first empty result; another schema variant may contain rows.
+              continue;
+            }
+
+            const hasUsableParticipants = candidateRows.some((room) => {
+              const customerId = resolveCustomerId(room);
+              const freelancerId = String(
+                room?.freelancer_id ?? room?.freelance_id ?? ""
+              );
+              if (!customerId || !freelancerId) return false;
+              return String(freelancerId) === String(currentUserId);
+            });
+
+            if (hasUsableParticipants) {
+              roomRows = candidateRows;
+              roomError = null;
+              break;
+            }
+
+            // Continue fallback variants if participant ids are incomplete.
+            continue;
+          }
+
+          roomError = result.error;
+          if (!isColumnMissingError(result.error)) {
+            break;
+          }
+        }
 
         if (roomError || !roomRows || roomRows.length === 0) {
           setFreelanceChats([]);
@@ -1401,11 +1463,24 @@ function RouteComponent() {
 
         const rooms = roomRows as any[];
         const roomIds = rooms.map((row) => String(row.id));
-        const customerIds = Array.from(
-          new Set(
-            rooms.map((row) => String(row.customer_id || "")).filter(Boolean)
-          )
+        const orderIds = Array.from(
+          new Set(rooms.map((row) => String(row.order_id || "")).filter(Boolean))
         );
+
+        const { data: orderRows } = orderIds.length
+          ? await supabase
+              .from("orders")
+              .select("order_id, customer_id, user_id")
+              .in("order_id", orderIds)
+          : { data: [] as any[] };
+
+        const orderMap = new Map(
+          ((orderRows as any[]) ?? []).map((row: any) => [
+            String(row.order_id || ""),
+            row
+          ])
+        );
+
         // chat_rooms stores the linked service id in order_id for service chat flows.
         const serviceIds = Array.from(
           new Set(rooms.map((row) => String(row.order_id || "")).filter(Boolean))
@@ -1413,14 +1488,57 @@ function RouteComponent() {
 
         const { data: messageRows } = await supabase
           .from("chat_messages")
-          .select("room_id, message, created_at")
+          .select("room_id, message, created_at, sender_id")
           .in("room_id", roomIds)
           .order("created_at", { ascending: false });
 
-        const { data: customerRows } = await supabase
-          .from("profiles")
-          .select("*")
-          .in("id", customerIds);
+        const latestNonSelfSenderByRoom = new Map<string, string>();
+        (messageRows ?? []).forEach((row: any) => {
+          const key = String(row.room_id || "");
+          const senderId = String(row.sender_id || "");
+          if (
+            senderId &&
+            senderId !== String(currentUserId) &&
+            !latestNonSelfSenderByRoom.has(key)
+          ) {
+            latestNonSelfSenderByRoom.set(key, senderId);
+          }
+        });
+
+        const resolvedCustomerIds = Array.from(
+          new Set(
+            rooms
+              .map((row) => {
+                const orderRow = orderMap.get(String(row.order_id || ""));
+                const roomCustomerId = resolveCustomerId(row);
+                const orderCustomerId = resolveOrderCustomerId(orderRow);
+                const senderFallbackId = latestNonSelfSenderByRoom.get(
+                  String(row.id || "")
+                );
+
+                return (
+                  (roomCustomerId && roomCustomerId !== String(currentUserId)
+                    ? roomCustomerId
+                    : "") ||
+                  (orderCustomerId && orderCustomerId !== String(currentUserId)
+                    ? orderCustomerId
+                    : "") ||
+                  (senderFallbackId && senderFallbackId !== String(currentUserId)
+                    ? senderFallbackId
+                    : "") ||
+                  ""
+                );
+              })
+              .filter(Boolean)
+          )
+        );
+
+        const { data: customerRows } = resolvedCustomerIds.length
+          ? await supabase
+              .from("profiles")
+              .select("*")
+              .in("id", resolvedCustomerIds)
+          : { data: [] as any[] };
 
         const { data: serviceRows } = await supabase
           .from("services")
@@ -1498,14 +1616,29 @@ function RouteComponent() {
         const mappedChats: FreelanceConversation[] = rooms
           .map((room: any) => {
             const roomId = String(room.id);
-            const customerId = String(room.customer_id);
+            const orderRow = orderMap.get(String(room.order_id || ""));
+            const roomCustomerId = resolveCustomerId(room);
+            const orderCustomerId = resolveOrderCustomerId(orderRow);
+            const senderFallbackId = latestNonSelfSenderByRoom.get(roomId) || "";
+
+            const effectiveCustomerId =
+              (roomCustomerId && roomCustomerId !== String(currentUserId)
+                ? roomCustomerId
+                : "") ||
+              (orderCustomerId && orderCustomerId !== String(currentUserId)
+                ? orderCustomerId
+                : "") ||
+              (senderFallbackId && senderFallbackId !== String(currentUserId)
+                ? senderFallbackId
+                : "") ||
+              "";
             const latest = latestByRoom.get(roomId);
-            const customer = customerMap.get(customerId);
+            const customer = customerMap.get(effectiveCustomerId);
 
             return {
               roomId,
               serviceId: String(room.order_id || ""),
-              customerId,
+              customerId: effectiveCustomerId,
               customerName: customer?.name || "Customer",
               customerAvatarUrl: customer?.avatar || null,
               serviceName: serviceMap.get(String(room.order_id || "")) || "Service",
@@ -2099,9 +2232,8 @@ function RouteComponent() {
                                     ฿ {job.price.toFixed(2)}
                                   </p>
                                   <Link
-                                    to="/service/$id"
-                                    params={{ id: job.serviceId }}
-                                    hash={`chat:${encodeURIComponent(job.roomId)}`}
+                                    to="/chat/$id"
+                                    params={{ id: job.roomId }}
                                     className="px-3 py-1.5 rounded-md bg-[#A03F00] text-white text-xs font-black"
                                   >
                                     Open Chat
@@ -2481,9 +2613,8 @@ function RouteComponent() {
                       {freelanceChats.map((chat) => (
                         <Link
                           key={chat.roomId}
-                          to="/service/$id"
-                          params={{ id: chat.serviceId }}
-                          hash={`chat:${encodeURIComponent(chat.roomId)}`}
+                          to="/chat/$id"
+                          params={{ id: chat.roomId }}
                           className="block border border-orange-100 rounded-lg p-3 hover:bg-orange-50"
                         >
                           <div className="flex items-center justify-between gap-3">
