@@ -5,18 +5,6 @@ import { create } from "zustand";
 import type { Profile, UserRole } from "@/types/user";
 import supabase from "@/utils/supabase";
 
-const isColumnMissingError = (error: any) => {
-  const message = String(error?.message || "").toLowerCase();
-  const code = String(error?.code || "").toLowerCase();
-  return (
-    code === "pgrst204" ||
-    code === "42703" ||
-    message.includes("column") ||
-    message.includes("does not exist") ||
-    message.includes("could not find")
-  );
-};
-
 interface UserState {
   session: Session | null;
   profile: Profile | null;
@@ -25,6 +13,7 @@ interface UserState {
 
   setSession: (session: Session | null) => void;
   setProfile: (profile: Profile | null) => void;
+  fetchProfile: () => Promise<Profile | null>;
   initialize: () => Promise<void>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: any }>;
@@ -40,112 +29,214 @@ export const useUserStore = create<UserState>((set, get) => ({
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile }),
 
-  initialize: async () => {
-    if (get().isInitialized) return;
-
+  fetchProfile: async () => {
     try {
-      // 1. Get initial session
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
       set({ session });
 
-      // 2. If session exists, fetch profile
       if (session) {
+        const roleFromMeta = session.user.app_metadata?.role as UserRole;
+
+        if (roleFromMeta === "admin") {
+          const adminProfile: Profile = {
+            id: session.user.id,
+            email: session.user.email || "",
+            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
+            role: "admin",
+            phone_number: null,
+            created_at: session.user.created_at,
+            address: null
+          };
+          set({ profile: adminProfile });
+          return adminProfile;
+        }
+
         const { data: profile } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", session.user.id)
-          .maybeSingle();
+          .single();
 
         let address = null;
         if (profile?.role === "customer") {
           const { data: customer } = await supabase
             .from("customers")
-            .select("address_id")
-            .eq("id", profile.id)
-            .maybeSingle();
-
-          const addressId = customer?.address_id ? String(customer.address_id) : null;
-          if (addressId) {
-            const { data: addressRow } = await supabase
-              .from("addresses")
-              .select("id, name, address_detail")
-              .eq("id", addressId)
-              .maybeSingle();
-
-            address =
-              addressRow?.address_detail ||
-              addressRow?.name ||
-              null;
-          }
+            .select("address")
+            .eq("id", session.user.id)
+            .single();
+          address = customer?.address;
         }
 
-        // Merge profile data with role from app_metadata if available
+        const finalProfile = profile
+          ? ({
+            ...profile,
+            role: roleFromMeta || profile.role,
+            address
+          } as Profile)
+          : ({
+            id: session.user.id,
+            email: session.user.email || "",
+            full_name: session.user.user_metadata?.full_name || "",
+            role: roleFromMeta || "customer",
+            phone_number: null,
+            created_at: session.user.created_at || new Date().toISOString(),
+            address: null
+          } as Profile);
+
+        set({ profile: finalProfile });
+        return finalProfile;
+      }
+      return null;
+    } catch (error) {
+      console.error("fetchProfile failed:", error);
+      return null;
+    }
+  },
+
+  initialize: async () => {
+    if (get().isInitialized) return;
+
+    try {
+      console.log("[UserStore] Initializing auth state...");
+      // 1. Get initial session with a short timeout to prevent boot hang
+      const {
+        data: { session },
+        error: sessionError
+      } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error("[UserStore] getSession error during init:", sessionError);
+      }
+      
+      console.log("[UserStore] Initial session check complete. Has session:", !!session);
+      set({ session });
+
+      // 2. If session exists, fetch profile
+      if (session) {
         const roleFromMeta = session.user.app_metadata?.role as UserRole;
-        if (profile) {
-          set({ profile: { ...profile, role: roleFromMeta || profile.role, address } });
-        } else {
-          // Fallback if profile doesn't exist yet
+
+        // If admin, skip profile fetch and use session data
+        if (roleFromMeta === "admin") {
+          console.log("[UserStore] Admin detected, skipping profile fetch");
           set({
             profile: {
               id: session.user.id,
               email: session.user.email || "",
-              full_name: session.user.user_metadata?.full_name || "",
-              role: roleFromMeta || "customer",
+              full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
+              role: "admin",
               phone_number: null,
-              created_at: new Date().toISOString(),
+              created_at: session.user.created_at,
               address: null
             } as Profile
           });
+        } else {
+          console.log("[UserStore] Fetching profile for user:", session.user.id);
+          const { data: profile, error: pError } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", session.user.id)
+            .single();
+
+          if (pError) {
+            console.error("[UserStore] Profile fetch error:", pError);
+          }
+
+          let address = null;
+          if (profile?.role === "customer") {
+            const { data: customer } = await supabase
+              .from("customers")
+              .select("address")
+              .eq("id", session.user.id)
+              .single();
+            address = customer?.address;
+          }
+
+          if (profile) {
+            set({
+              profile: {
+                ...profile,
+                role: roleFromMeta || profile.role,
+                address
+              }
+            });
+          } else {
+            console.warn("[UserStore] Profile not found, using fallback");
+            // Fallback if profile doesn't exist yet
+            set({
+              profile: {
+                id: session.user.id,
+                email: session.user.email || "",
+                full_name: session.user.user_metadata?.full_name || "",
+                role: roleFromMeta || "customer",
+                phone_number: null,
+                created_at: session.user.created_at || new Date().toISOString(),
+                address: null
+              } as Profile
+            });
+          }
         }
       }
     } catch (error) {
-      console.error("User initialization failed:", error);
+      console.error("[UserStore] User initialization failed catastrophically:", error);
     } finally {
+      console.log("[UserStore] Initialization finished.");
       set({ isLoading: false, isInitialized: true });
     }
 
     // 3. Setup Auth Listener
     supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("[UserStore] Auth state change event:", event);
       set({ session });
 
-      if (event === "SIGNED_IN" || event === "USER_UPDATED" || event === "TOKEN_REFRESHED") {
-        if (!session?.user?.id) {
-          set({ profile: null });
-          return;
-        }
+      if (
+        event === "SIGNED_IN" ||
+        event === "USER_UPDATED" ||
+        event === "TOKEN_REFRESHED"
+      ) {
+        if (session) {
+          const roleFromMeta = session.user.app_metadata?.role as UserRole;
 
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", session.user.id)
-          .maybeSingle();
+          if (roleFromMeta === "admin") {
+            set({
+              profile: {
+                id: session.user.id,
+                email: session.user.email || "",
+                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
+                role: "admin",
+                phone_number: null,
+                created_at: session.user.created_at,
+                address: null
+              } as Profile
+            });
+          } else {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", session.user.id)
+              .single();
 
-        let address = null;
-        if (profile?.role === "customer") {
-          const { data: customer } = await supabase
-            .from("customers")
-            .select("address_id")
-            .eq("id", profile.id)
-            .maybeSingle();
+            let address = null;
+            if (profile?.role === "customer") {
+              const { data: customer } = await supabase
+                .from("customers")
+                .select("address")
+                .eq("id", session.user.id)
+                .single();
+              address = customer?.address;
+            }
 
-          const addressId = customer?.address_id ? String(customer.address_id) : null;
-          if (addressId) {
-            const { data: addressRow } = await supabase
-              .from("addresses")
-              .select("id, name, address_detail")
-              .eq("id", addressId)
-              .maybeSingle();
-
-            address =
-              addressRow?.address_detail ||
-              addressRow?.name ||
-              null;
+            if (profile) {
+              set({
+                profile: {
+                  ...profile,
+                  role: roleFromMeta || profile.role,
+                  address
+                }
+              });
+            }
           }
-        }
-
-        const roleFromMeta = session?.user?.app_metadata?.role as UserRole;
-        if (profile) {
-          set({ profile: { ...profile, role: roleFromMeta || profile.role, address } });
         }
       } else if (event === "SIGNED_OUT") {
         set({ profile: null });
@@ -175,123 +266,17 @@ export const useUserStore = create<UserState>((set, get) => ({
     if (profile.role === "customer" && address !== undefined) {
       console.log("Updating customers table for ID:", profile.id);
 
-      // Read current linked address id (if any)
-      const { data: customerRow } = await supabase
+      const { error: customerError } = await supabase
         .from("customers")
-        .select("address_id")
-        .eq("id", profile.id)
-        .maybeSingle();
+        .upsert({
+          id: profile.id,
+          address,
+          updated_at: new Date().toISOString()
+        });
 
-      const existingAddressId = customerRow?.address_id
-        ? String(customerRow.address_id)
-        : null;
-
-      let nextAddressId = existingAddressId;
-
-      if (existingAddressId) {
-        // Update existing address detail
-        const { error: updateAddressError } = await supabase
-          .from("addresses")
-          .update({ address_detail: address })
-          .eq("id", existingAddressId);
-
-        if (updateAddressError && !isColumnMissingError(updateAddressError)) {
-          console.error("Error updating addresses table:", updateAddressError);
-          return {
-            error:
-              updateAddressError?.message ||
-              "Failed to update customer address information."
-          };
-        }
-      } else {
-        // Create a new address row and link it to customer
-        const insertCandidates = [
-          {
-            name: "Home",
-            address_detail: address,
-            profile_id: profile.id
-          },
-          {
-            name: "Home",
-            address_detail: address
-          }
-        ];
-
-        let createdAddressId: string | null = null;
-        let createAddressError: any = null;
-
-        for (const payload of insertCandidates) {
-          const result = await supabase
-            .from("addresses")
-            .insert([payload])
-            .select("id")
-            .maybeSingle();
-
-          if (!result.error && result.data?.id) {
-            createdAddressId = String(result.data.id);
-            createAddressError = null;
-            break;
-          }
-
-          createAddressError = result.error;
-          if (result.error && !isColumnMissingError(result.error)) {
-            break;
-          }
-        }
-
-        if (!createdAddressId) {
-          console.error("Error creating addresses row:", createAddressError);
-          return {
-            error:
-              createAddressError?.message ||
-              "Failed to create customer address information."
-          };
-        }
-
-        nextAddressId = createdAddressId;
-      }
-
-      if (nextAddressId) {
-        const customerPayloads = [
-          {
-            id: profile.id,
-            address_id: nextAddressId,
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: profile.id,
-            address_id: nextAddressId
-          }
-        ];
-
-        let customerError: any = null;
-        let customerUpdated = false;
-
-        for (const payload of customerPayloads) {
-          const result = await supabase
-            .from("customers")
-            .upsert(payload, { onConflict: "id" });
-
-          if (!result.error) {
-            customerUpdated = true;
-            customerError = null;
-            break;
-          }
-
-          customerError = result.error;
-          if (!isColumnMissingError(result.error)) {
-            break;
-          }
-        }
-
-        if (!customerUpdated && customerError) {
-          console.error("Error updating customers table:", customerError);
-          return {
-            error:
-              customerError?.message ||
-              "Failed to update customer address information."
-          };
-        }
+      if (customerError) {
+        console.error("Error updating customers table:", customerError);
+        return { error: customerError };
       }
     }
 

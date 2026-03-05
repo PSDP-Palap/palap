@@ -11,7 +11,175 @@ import { withTimeout } from "@/utils/helpers";
 import supabase from "@/utils/supabase";
 
 export const Route = createFileRoute("/service/$id")({
-  component: RouteComponent
+  loader: async ({ params: { id } }) => {
+    // 1. Load service
+    const { data: serviceData, error: serviceError } = await withTimeout(
+      supabase
+        .from("services")
+        .select("*, freelancer:profiles(*)")
+        .eq("service_id", id)
+        .maybeSingle()
+    );
+
+    let service = serviceData;
+    let creator = serviceData?.freelancer || null;
+    let creatorId =
+      serviceData?.freelancer_id ||
+      serviceData?.created_by ||
+      serviceData?.user_id ||
+      serviceData?.profile_id ||
+      null;
+
+    if (serviceError || !serviceData) {
+      const { data: fallbackData, error: fallbackError } = await withTimeout(
+        supabase.from("services").select("*").eq("service_id", id).maybeSingle()
+      );
+      if (fallbackError) throw fallbackError;
+      if (!fallbackData) throw new Error("Service not found");
+
+      service = fallbackData;
+      creatorId =
+        fallbackData.freelancer_id ||
+        fallbackData.created_by ||
+        fallbackData.user_id ||
+        fallbackData.profile_id ||
+        null;
+
+      if (creatorId) {
+        const { data: pData } = await withTimeout(
+          supabase.from("profiles").select("*").eq("id", creatorId).maybeSingle()
+        );
+        if (pData) creator = pData;
+      }
+    }
+
+    // 2. Load initial hire data if logged in
+    const { profile, session } = useUserStore.getState();
+    const currentUserId = profile?.id || session?.user?.id || null;
+
+    let initialHireStatus = {
+      isHireRequested: false,
+      isHireAccepted: false,
+      pendingHireRequests: [] as PendingHireRoomView[]
+    };
+
+    if (currentUserId && creatorId) {
+      const isServiceOwner = String(currentUserId) === String(creatorId);
+
+      if (isServiceOwner) {
+        const { data: rooms } = await withTimeout(
+          supabase
+            .from("chat_rooms")
+            .select("id, customer_id, freelancer_id")
+            .eq("order_id", id)
+            .eq("freelancer_id", currentUserId)
+        );
+
+        if (rooms && rooms.length > 0) {
+          const roomIds = rooms.map((r: any) => String(r.id)).filter(Boolean);
+          const customers = rooms
+            .map((r: any) => String(r.customer_id || ""))
+            .filter(Boolean);
+
+          const [{ data: profiles }, { data: messageRows }] = await Promise.all([
+            withTimeout(
+              supabase
+                .from("profiles")
+                .select("id, full_name, avatar_url")
+                .in("id", customers)
+            ),
+            withTimeout(
+              supabase
+                .from("chat_messages")
+                .select("room_id, message, created_at")
+                .in("room_id", roomIds)
+                .order("created_at", { ascending: true })
+            )
+          ]);
+
+          const pMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+          const byRoom = new Map<string, any[]>();
+          (messageRows || []).forEach((row: any) => {
+            const key = String(row.room_id || "");
+            const current = byRoom.get(key) || [];
+            current.push(row);
+            byRoom.set(key, current);
+          });
+
+          initialHireStatus.pendingHireRequests = (rooms as any[])
+            .map((room: any) => {
+              const roomId = String(room.id || "");
+              const roomMessages = byRoom.get(roomId) || [];
+              const state = deriveHireStateFromMessages(roomMessages);
+              if (!state.requested || state.accepted) return null;
+
+              const customerId = String(room.customer_id || "");
+              const p = pMap.get(customerId);
+
+              return {
+                room_id: roomId,
+                customer_id: customerId,
+                customer_name: p?.full_name || "Customer",
+                customer_avatar_url: p?.avatar_url || null,
+                request_message: state.requestMessage || DEFAULT_HIRE_MESSAGE
+              };
+            })
+            .filter(Boolean) as PendingHireRoomView[];
+        }
+      } else {
+        const { data: myRoom } = await withTimeout(
+          supabase
+            .from("chat_rooms")
+            .select("id")
+            .eq("order_id", id)
+            .eq("customer_id", currentUserId)
+            .eq("freelancer_id", creatorId)
+            .maybeSingle()
+        );
+
+        if (myRoom?.id) {
+          const { data: myMessages } = await withTimeout(
+            supabase
+              .from("chat_messages")
+              .select("message, created_at")
+              .eq("room_id", String(myRoom.id))
+              .order("created_at", { ascending: true })
+          );
+
+          const state = deriveHireStateFromMessages(myMessages || []);
+          initialHireStatus.isHireRequested = state.requested;
+          initialHireStatus.isHireAccepted = state.accepted;
+        }
+      }
+    }
+
+    return {
+      service,
+      creator,
+      creatorId,
+      initialHireStatus
+    };
+  },
+  component: RouteComponent,
+  errorComponent: ({ error }) => (
+    <div className="min-h-screen bg-[#F9E6D8] flex flex-col items-center justify-center pt-24 gap-4">
+      <p className="text-red-600 font-bold">{error.message || "Failed to load service"}</p>
+      <a
+        href="/service"
+        className="bg-[#D35400] text-white px-4 py-2 rounded-lg font-bold"
+      >
+        Back to Services
+      </a>
+    </div>
+  ),
+  pendingComponent: () => (
+    <div className="min-h-screen bg-[#F9E6D8] flex items-center justify-center pt-24">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-[#D35400] border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-[#D35400] font-bold animate-pulse">Loading Service...</p>
+      </div>
+    </div>
+  ),
 });
 
 const DEFAULT_DESCRIPTION =
@@ -110,20 +278,18 @@ const getPriceFromMessage = (message: string) => {
 };
 
 function RouteComponent() {
+  const {
+    service: initialService,
+    creator: initialCreator,
+    creatorId: initialCreatorId,
+    initialHireStatus
+  } = Route.useLoaderData();
   const { id } = Route.useParams();
   const router = useRouter();
-  const [service, setService] = useState<any | null>(null);
-  const [creator, setCreator] = useState<{
-    id?: string | null;
-    full_name?: string | null;
-    email?: string | null;
-    role?: string | null;
-    user_role?: string | null;
-    avatar_url?: string | null;
-    image_url?: string | null;
-    photo_url?: string | null;
-  } | null>(null);
-  const [creatorId, setCreatorId] = useState<string | null>(null);
+
+  const [service, setService] = useState<any>(initialService);
+  const [creator, setCreator] = useState<any>(initialCreator);
+  const [creatorId, setCreatorId] = useState<string | null>(initialCreatorId);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [hashRoomId, setHashRoomId] = useState<string | null>(null);
   const [activeRoomParticipants, setActiveRoomParticipants] = useState<{
@@ -131,7 +297,7 @@ function RouteComponent() {
     freelancer?: string;
   } | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [isChatOpen, setIsChatOpen] = useState(() => {
@@ -152,8 +318,8 @@ function RouteComponent() {
   const [loadingChatRoomList, setLoadingChatRoomList] = useState(false);
   const [chatRoomSearch, setChatRoomSearch] = useState("");
 
-  const [isHireRequested, setIsHireRequested] = useState(false);
-  const [isHireAccepted, setIsHireAccepted] = useState(false);
+  const [isHireRequested, setIsHireRequested] = useState(initialHireStatus.isHireRequested);
+  const [isHireAccepted, setIsHireAccepted] = useState(initialHireStatus.isHireAccepted);
   const [hireRequestMessage, setHireRequestMessage] =
     useState(DEFAULT_HIRE_MESSAGE);
   const [sendingHireRequest, setSendingHireRequest] = useState(false);
@@ -161,7 +327,7 @@ function RouteComponent() {
   const [requestError, setRequestError] = useState<string | null>(null);
   const [pendingHireRequests, setPendingHireRequests] = useState<
     PendingHireRoomView[]
-  >([]);
+  >(initialHireStatus.pendingHireRequests);
   const [acceptingRequestRoomId, setAcceptingRequestRoomId] = useState<
     string | null
   >(null);
@@ -213,39 +379,49 @@ function RouteComponent() {
           setError(null);
         }
 
+        // Optimize: Join profile in a single query if freelancer_id column name is known
+        // We'll try a common join or just keep it simple but with timeout
         const { data: serviceData, error: serviceError } = await withTimeout(
           supabase
             .from("services")
-            .select("*")
+            .select("*, freelancer:profiles(*)")
             .eq("service_id", id)
             .maybeSingle()
         );
 
-        if (serviceError) throw serviceError;
-        if (!serviceData) throw new Error("Service not found");
-
-        setService(serviceData);
-        const freelancerId =
-          serviceData.freelancer_id ||
-          serviceData.created_by ||
-          serviceData.user_id ||
-          serviceData.profile_id ||
-          null;
-
-        setCreatorId(freelancerId);
-
-        if (freelancerId) {
-          const { data: profileData, error: profileError } = await withTimeout(
+        if (serviceError) {
+          // Fallback if the join fails due to schema naming
+          const { data: fallbackData, error: fallbackError } = await withTimeout(
             supabase
-              .from("profiles")
+              .from("services")
               .select("*")
-              .eq("id", freelancerId)
+              .eq("service_id", id)
               .maybeSingle()
           );
+          if (fallbackError) throw fallbackError;
+          if (!fallbackData) throw new Error("Service not found");
 
-          if (!profileError && profileData) {
-            setCreator(profileData);
+          setService(fallbackData);
+          const fId = fallbackData.freelancer_id || fallbackData.created_by || fallbackData.user_id || fallbackData.profile_id || null;
+          setCreatorId(fId);
+
+          if (fId) {
+            const { data: pData } = await withTimeout(
+              supabase.from("profiles").select("*").eq("id", fId).maybeSingle()
+            );
+            if (pData) setCreator(pData);
           }
+        } else {
+          if (!serviceData) throw new Error("Service not found");
+          setService(serviceData);
+          setCreator(serviceData.freelancer || null);
+          setCreatorId(
+            serviceData.freelancer_id ||
+            serviceData.created_by ||
+            serviceData.user_id ||
+            serviceData.profile_id ||
+            null
+          );
         }
 
         if (silent) {
@@ -264,9 +440,13 @@ function RouteComponent() {
     [id]
   );
 
+  // Initial load handled by TanStack Router loader
   useEffect(() => {
-    loadService();
-  }, [loadService]);
+    // Only fetch if data is missing (e.g. after some client-side navigation that skips loader)
+    if (!service) {
+      loadService();
+    }
+  }, [loadService, service]);
 
   const getParticipantPair = useCallback(() => {
     if (!activeRoomParticipants) return null;
@@ -514,26 +694,19 @@ function RouteComponent() {
     }
   }, [currentUserId, creatorId, id, isServiceOwner]);
 
+  // Initial hire data handled by loader
   useEffect(() => {
-    loadHireRequestData();
-  }, [loadHireRequestData]);
+    // Only fetch if data is missing or initial was empty and we have IDs now
+    if (creatorId && currentUserId && !isHireRequested && pendingHireRequests.length === 0) {
+      loadHireRequestData();
+    }
+  }, [loadHireRequestData, creatorId, currentUserId, isHireRequested, pendingHireRequests.length]);
 
   useEffect(() => {
     const refreshSilently = () => {
       loadService({ silent: true });
       loadHireRequestData({ silent: true });
     };
-
-    const intervalId = window.setInterval(refreshSilently, 5000);
-    const onFocusRefresh = () => refreshSilently();
-    const onVisibilityRefresh = () => {
-      if (document.visibilityState === "visible") {
-        refreshSilently();
-      }
-    };
-
-    window.addEventListener("focus", onFocusRefresh);
-    document.addEventListener("visibilitychange", onVisibilityRefresh);
 
     const serviceChannel = supabase
       .channel(`service_detail_${id}`)
@@ -585,7 +758,6 @@ function RouteComponent() {
       .subscribe();
 
     return () => {
-      window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocusRefresh);
       document.removeEventListener("visibilitychange", onVisibilityRefresh);
       supabase.removeChannel(serviceChannel);

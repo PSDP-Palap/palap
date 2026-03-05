@@ -749,13 +749,13 @@ function RouteComponent() {
           error: ownershipFreelancerError
         } = await supabase
           .from("orders")
-          .select("order_id, freelancer_id")
+          .select("order_id, freelance_id")
           .eq("order_id", order.orderId)
           .maybeSingle();
 
         if (!ownershipFreelancerError) {
           assignedFreelancerId = String(
-            (ownershipFreelancerRow as any)?.freelancer_id || ""
+            (ownershipFreelancerRow as any)?.freelance_id || ""
           );
         } else if (!isColumnMissingError(ownershipFreelancerError)) {
           throw ownershipFreelancerError;
@@ -804,7 +804,7 @@ function RouteComponent() {
                 updated_at: nowIso
               })
               .eq("order_id", order.orderId)
-              .eq("freelancer_id", currentUserId)
+              .eq("freelance_id", currentUserId)
               .select("order_id")
               .maybeSingle();
 
@@ -850,7 +850,7 @@ function RouteComponent() {
                   updated_at: nowIso
                 })
                 .eq("order_id", order.orderId)
-                .eq("freelancer_id", currentUserId)
+                .eq("freelance_id", currentUserId)
                 .select("order_id")
                 .maybeSingle();
 
@@ -859,7 +859,10 @@ function RouteComponent() {
               break;
             }
 
-            if (altOwnerStatusError && !isColumnMissingError(altOwnerStatusError)) {
+            if (
+              altOwnerStatusError &&
+              !isColumnMissingError(altOwnerStatusError)
+            ) {
               if (isInvalidEnumValueError(altOwnerStatusError)) {
                 lastCompleteError = altOwnerStatusError;
                 continue;
@@ -907,7 +910,10 @@ function RouteComponent() {
             .select("order_id")
             .maybeSingle();
 
-          if (!fallbackAltOwnerComplete.error && fallbackAltOwnerComplete.data?.order_id) {
+          if (
+            !fallbackAltOwnerComplete.error &&
+            fallbackAltOwnerComplete.data?.order_id
+          ) {
             completed = true;
           } else if (fallbackAltOwnerComplete.error) {
             throw new Error(
@@ -1083,7 +1089,9 @@ function RouteComponent() {
       ];
 
       for (const payload of insertPayloadCandidates) {
-        const { error } = await supabase.from("chat_messages").insert([payload]);
+        const { error } = await supabase
+          .from("chat_messages")
+          .insert([payload]);
         if (!error) {
           insertError = null;
           break;
@@ -1113,7 +1121,9 @@ function RouteComponent() {
     }
   };
 
-  const loadPendingHireRequests = async (options?: { background?: boolean }) => {
+  const loadPendingHireRequests = async (options?: {
+    background?: boolean;
+  }) => {
     const isBackground = options?.background ?? false;
 
     if (!currentUserId) {
@@ -1141,34 +1151,39 @@ function RouteComponent() {
       const rooms = roomRows as any[];
       const roomIds = rooms.map((row) => String(row.id));
       const customerIds = Array.from(
-        new Set(rooms.map((row) => String(row.customer_id || "")).filter(Boolean))
+        new Set(
+          rooms.map((row) => String(row.customer_id || "")).filter(Boolean)
+        )
       );
       const orderIds = Array.from(
         new Set(rooms.map((row) => String(row.order_id || "")).filter(Boolean))
       );
 
-      const [{ data: messageRows }, { data: customerRows }, { data: serviceRows }] =
-        await Promise.all([
-          roomIds.length > 0
-            ? supabase
-                .from("chat_messages")
-                .select("room_id, message, created_at")
-                .in("room_id", roomIds)
-                .order("created_at", { ascending: true })
-            : Promise.resolve({ data: [] as any[] }),
-          customerIds.length > 0
-            ? supabase
-                .from("profiles")
-                .select("id, full_name, email")
-                .in("id", customerIds)
-            : Promise.resolve({ data: [] as any[] }),
-          orderIds.length > 0
-            ? supabase
-                .from("services")
-                .select("service_id, name")
-                .in("service_id", orderIds)
-            : Promise.resolve({ data: [] as any[] })
-        ]);
+      const [
+        { data: messageRows },
+        { data: customerRows },
+        { data: serviceRows }
+      ] = await Promise.all([
+        roomIds.length > 0
+          ? supabase
+              .from("chat_messages")
+              .select("room_id, message, created_at")
+              .in("room_id", roomIds)
+              .order("created_at", { ascending: true })
+          : Promise.resolve({ data: [] as any[] }),
+        customerIds.length > 0
+          ? supabase
+              .from("profiles")
+              .select("id, full_name, email")
+              .in("id", customerIds)
+          : Promise.resolve({ data: [] as any[] }),
+        orderIds.length > 0
+          ? supabase
+              .from("services")
+              .select("service_id, name")
+              .in("service_id", orderIds)
+          : Promise.resolve({ data: [] as any[] })
+      ]);
 
       const customerMap = new Map(
         (customerRows ?? []).map((row: any) => [
@@ -1216,7 +1231,8 @@ function RouteComponent() {
             customerId: String(room.customer_id || ""),
             customerName:
               customerMap.get(String(room.customer_id || "")) || "Customer",
-            serviceName: serviceMap.get(String(room.order_id || "")) || "Service",
+            serviceName:
+              serviceMap.get(String(room.order_id || "")) || "Service",
             requestMessage: requestMessage || "Customer sent a hire request.",
             requestedAt: String(
               firstRequest?.created_at || room.last_message_at || ""
@@ -1263,34 +1279,39 @@ function RouteComponent() {
       const rooms = roomRows as any[];
       const roomIds = rooms.map((row) => String(row.id));
       const customerIds = Array.from(
-        new Set(rooms.map((row) => String(row.customer_id || "")).filter(Boolean))
+        new Set(
+          rooms.map((row) => String(row.customer_id || "")).filter(Boolean)
+        )
       );
       const orderIds = Array.from(
         new Set(rooms.map((row) => String(row.order_id || "")).filter(Boolean))
       );
 
-      const [{ data: messageRows }, { data: customerRows }, { data: serviceRows }] =
-        await Promise.all([
-          roomIds.length > 0
-            ? supabase
-                .from("chat_messages")
-                .select("room_id, message, created_at")
-                .in("room_id", roomIds)
-                .order("created_at", { ascending: true })
-            : Promise.resolve({ data: [] as any[] }),
-          customerIds.length > 0
-            ? supabase
-                .from("profiles")
-                .select("id, full_name, email")
-                .in("id", customerIds)
-            : Promise.resolve({ data: [] as any[] }),
-          orderIds.length > 0
-            ? supabase
-                .from("services")
-                .select("service_id, name, category, price")
-                .in("service_id", orderIds)
-            : Promise.resolve({ data: [] as any[] })
-        ]);
+      const [
+        { data: messageRows },
+        { data: customerRows },
+        { data: serviceRows }
+      ] = await Promise.all([
+        roomIds.length > 0
+          ? supabase
+              .from("chat_messages")
+              .select("room_id, message, created_at")
+              .in("room_id", roomIds)
+              .order("created_at", { ascending: true })
+          : Promise.resolve({ data: [] as any[] }),
+        customerIds.length > 0
+          ? supabase
+              .from("profiles")
+              .select("id, full_name, email")
+              .in("id", customerIds)
+          : Promise.resolve({ data: [] as any[] }),
+        orderIds.length > 0
+          ? supabase
+              .from("services")
+              .select("service_id, name, category, price")
+              .in("service_id", orderIds)
+          : Promise.resolve({ data: [] as any[] })
+      ]);
 
       const customerMap = new Map(
         (customerRows ?? []).map((row: any) => [
@@ -1477,7 +1498,9 @@ function RouteComponent() {
         const rooms = roomRows as any[];
         const roomIds = rooms.map((row) => String(row.id));
         const orderIds = Array.from(
-          new Set(rooms.map((row) => String(row.order_id || "")).filter(Boolean))
+          new Set(
+            rooms.map((row) => String(row.order_id || "")).filter(Boolean)
+          )
         );
 
         const { data: orderRows } = orderIds.length
@@ -1496,7 +1519,9 @@ function RouteComponent() {
 
         // chat_rooms stores the linked service id in order_id for service chat flows.
         const serviceIds = Array.from(
-          new Set(rooms.map((row) => String(row.order_id || "")).filter(Boolean))
+          new Set(
+            rooms.map((row) => String(row.order_id || "")).filter(Boolean)
+          )
         );
 
         const { data: messageRows } = await supabase
@@ -1536,7 +1561,8 @@ function RouteComponent() {
                   (orderCustomerId && orderCustomerId !== String(currentUserId)
                     ? orderCustomerId
                     : "") ||
-                  (senderFallbackId && senderFallbackId !== String(currentUserId)
+                  (senderFallbackId &&
+                  senderFallbackId !== String(currentUserId)
                     ? senderFallbackId
                     : "") ||
                   ""
@@ -1632,7 +1658,8 @@ function RouteComponent() {
             const orderRow = orderMap.get(String(room.order_id || ""));
             const roomCustomerId = resolveCustomerId(room);
             const orderCustomerId = resolveOrderCustomerId(orderRow);
-            const senderFallbackId = latestNonSelfSenderByRoom.get(roomId) || "";
+            const senderFallbackId =
+              latestNonSelfSenderByRoom.get(roomId) || "";
 
             const effectiveCustomerId =
               (roomCustomerId && roomCustomerId !== String(currentUserId)
@@ -1654,7 +1681,8 @@ function RouteComponent() {
               customerId: effectiveCustomerId,
               customerName: customer?.name || "Customer",
               customerAvatarUrl: customer?.avatar || null,
-              serviceName: serviceMap.get(String(room.order_id || "")) || "Service",
+              serviceName:
+                serviceMap.get(String(room.order_id || "")) || "Service",
               lastMessage: latest?.message || "No message yet",
               lastAt: latest?.createdAt || String(room.last_message_at || "")
             };
@@ -2232,7 +2260,9 @@ function RouteComponent() {
                         <p className="mt-1 text-[10px] text-gray-500">
                           Last updated:{" "}
                           {jobBoardLastUpdatedAt
-                            ? new Date(jobBoardLastUpdatedAt).toLocaleTimeString()
+                            ? new Date(
+                                jobBoardLastUpdatedAt
+                              ).toLocaleTimeString()
                             : "-"}
                         </p>
                       </div>
@@ -2274,21 +2304,25 @@ function RouteComponent() {
                                   <p className="text-[11px] font-bold uppercase tracking-wide text-orange-700/80 mb-1">
                                     Customer Message
                                   </p>
-                                  <p className="text-xs text-[#5D2611] leading-relaxed break-words">
+                                  <p className="text-xs text-[#5D2611] leading-relaxed wrap-break-word">
                                     {request.requestMessage}
                                   </p>
                                 </div>
                                 <p className="text-xs text-gray-500">
                                   Requested:{" "}
                                   {request.requestedAt
-                                    ? new Date(request.requestedAt).toLocaleString()
+                                    ? new Date(
+                                        request.requestedAt
+                                      ).toLocaleString()
                                     : "-"}
                                 </p>
                                 <div className="flex items-center justify-end gap-2 mt-2">
                                   <button
                                     type="button"
                                     onClick={() => acceptHireRequest(request)}
-                                    disabled={acceptingHireRoomId === request.roomId}
+                                    disabled={
+                                      acceptingHireRoomId === request.roomId
+                                    }
                                     className="px-3 py-1.5 rounded-md bg-green-600 text-white text-xs font-black disabled:bg-gray-300"
                                   >
                                     {acceptingHireRoomId === request.roomId
@@ -2321,7 +2355,8 @@ function RouteComponent() {
                           </p>
                         ) : ongoingServiceJobs.length === 0 ? (
                           <p className="text-sm text-gray-500">
-                            No ongoing jobs yet. Accept a hire request to start one.
+                            No ongoing jobs yet. Accept a hire request to start
+                            one.
                           </p>
                         ) : (
                           <div className="space-y-2">
@@ -2586,7 +2621,7 @@ function RouteComponent() {
                         </div>
 
                         <div
-                          className={`rounded-md overflow-hidden border border-orange-200 relative ${mapExpanded ? "h-[380px]" : "h-48"}`}
+                          className={`rounded-md overflow-hidden border border-orange-200 relative ${mapExpanded ? "h-95" : "h-48"}`}
                         >
                           <MapContainer
                             bounds={mapLeafletBounds}
@@ -2601,7 +2636,7 @@ function RouteComponent() {
                             />
                           </MapContainer>
 
-                          <div className="absolute inset-0 z-[1000] pointer-events-none flex items-center justify-center">
+                          <div className="absolute inset-0 z-1000 pointer-events-none flex items-center justify-center">
                             <div className="relative w-14 h-14 flex items-center justify-center">
                               <div className="absolute top-1/2 left-0 right-0 h-px bg-black/20" />
                               <div className="absolute left-1/2 top-0 bottom-0 w-px bg-black/20" />

@@ -1,10 +1,12 @@
 export const withTimeout = async <T>(
   promiseLike: PromiseLike<T> | (() => Promise<T>),
-  timeoutMs = 30000
+  timeoutMs = 30000,
+  context = "Unknown"
 ): Promise<T> => {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error("Request timed out. Please try again."));
+      console.warn(`[Timeout] "${context}" exceeded ${timeoutMs}ms`);
+      reject(new Error(`Request timed out (${context}). Please try again.`));
     }, timeoutMs);
 
     const promise = typeof promiseLike === "function" ? promiseLike() : promiseLike;

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 
 import supabase from "@/utils/supabase";
@@ -10,68 +10,75 @@ const DEFAULT_DESCRIPTION = "Reliable and professional pet service tailored for 
 const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1517849845537-4d257902454a?q=80&w=1200&auto=format&fit=crop";
 
 export const Route = createFileRoute("/service/")({
+  loader: async () => {
+    console.log("[Router] Service loader started");
+
+    const { data, error } = await supabase
+      .from("services")
+      .select("*")
+      .neq("category", "DELIVERY_SESSION")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("[Router] Supabase error fetching services:", error);
+      throw error;
+    }
+
+    console.log("[Router] Service loader finished, count:", data?.length);
+
+    const visibleServices: Service[] = (data ?? [])
+      .map((item: any) => ({
+        id: String(item.service_id ?? item.id ?? ""),
+        name: item.name ?? "Unnamed Service",
+        price: Number(item.price ?? 0),
+        category: item.category ?? null,
+        pickup_address: item.pickup_address ?? null,
+        dest_address: item.dest_address ?? null,
+        description: item.description ?? DEFAULT_DESCRIPTION,
+        image_url: item.image_url ?? DEFAULT_IMAGE,
+        creator_id: item.freelancer_id ?? item.created_by ?? item.user_id ?? item.profile_id ?? null,
+        creator_name: "Freelancer",
+        creator_avatar_url: null,
+      }))
+      .filter((item) => {
+        const name = String(item.name || "").toLowerCase();
+        return !name.includes("order session");
+      });
+
+    return { services: visibleServices };
+  },
   component: RouteComponent,
+  errorComponent: ({ error }) => (
+    <div className="min-h-screen bg-[#F9E6D8] flex flex-col items-center justify-center">
+      <p className="text-red-600 font-bold mb-4">{error.message || "Failed to load services"}</p>
+      <button
+        className="bg-[#D35400] text-white px-6 py-2 rounded-lg"
+        onClick={() => window.location.reload()}
+      >
+        Retry
+      </button>
+    </div>
+  ),
+  pendingComponent: () => (
+    <div className="min-h-screen bg-[#F9E6D8] flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-[#D35400] border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-[#D35400] font-bold animate-pulse">Loading Services...</p>
+      </div>
+    </div>
+  )
 });
 
 function RouteComponent() {
-  const [services, setServices] = useState<Service[]>([]);
+  const { services: initialServices } = Route.useLoaderData();
+  const [services, setServices] = useState<Service[]>(initialServices);
   const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      console.log("DEBUG: Calling supabase.from('services').select('*')...");
-
-      const response = await supabase
-        .from("services")
-        .select("*")
-        .neq("category", "DELIVERY_SESSION")
-        .order("created_at", { ascending: false })
-        .limit(100);
-
-      console.log("DEBUG: Supabase response received:", response);
-      const { data, error: fetchError } = response;
-
-      if (fetchError) {
-        console.error("DEBUG: Supabase fetch error:", fetchError);
-        throw fetchError;
-      }
-
-      // 2. Filter 'order session' on Client-side to avoid slow Database scan
-      const visibleServices: Service[] = (data ?? [])
-        .map((item: any) => ({
-          id: String(item.service_id ?? item.id ?? ""),
-          name: item.name ?? "Unnamed Service",
-          price: Number(item.price ?? 0),
-          category: item.category ?? null,
-          pickup_address: item.pickup_address ?? null,
-          dest_address: item.dest_address ?? null,
-          description: item.description ?? DEFAULT_DESCRIPTION,
-          image_url: item.image_url ?? DEFAULT_IMAGE,
-          creator_id: item.freelancer_id ?? item.created_by ?? item.user_id ?? item.profile_id ?? null,
-          creator_name: "Freelancer", // Fallback since we removed the profile fetch
-          creator_avatar_url: null,
-        }))
-        .filter((item) => {
-          const name = String(item.name || "").toLowerCase();
-          return !name.includes("order session");
-        });
-
-      setServices(visibleServices);
-    } catch (err: any) {
-      console.error("Error fetching services:", err);
-      setError(err.message || String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Sync services if loader data changes
   useEffect(() => {
-    load();
-  }, [load]);
+    setServices(initialServices);
+  }, [initialServices]);
 
   const filteredServices = services.filter((service) => {
     const query = searchQuery.trim().toLowerCase();
@@ -83,33 +90,6 @@ function RouteComponent() {
       (service.category ?? "").toLowerCase().includes(query)
     );
   });
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#F9E6D8] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#D35400] border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-[#D35400] font-bold animate-pulse">Loading Services...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-[#F9E6D8] flex flex-col items-center justify-center">
-        <p className="text-red-600 font-bold mb-4">{error}</p>
-        <button
-          className="bg-[#D35400] text-white px-6 py-2 rounded-lg"
-          onClick={() => {
-            load();
-          }}
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#F9E6D8] font-sans pb-14">

@@ -128,7 +128,7 @@ function ChatRouteComponent() {
       if (room.order_id && (!customerId || !freelancerId)) {
         const { data: orderRow } = await supabase
           .from("orders")
-          .select("order_id, customer_id, freelancer_id, freelance_id")
+          .select("order_id, customer_id, freelance_id")
           .eq("order_id", String(room.order_id))
           .maybeSingle();
 
@@ -329,7 +329,7 @@ function ChatRouteComponent() {
           const { data: orderRows } = orderIds.length
             ? await supabase
                 .from("orders")
-                .select("order_id, customer_id, freelancer_id, freelance_id")
+                .select("order_id, customer_id, freelance_id")
                 .in("order_id", orderIds)
             : { data: [] as any[] };
 

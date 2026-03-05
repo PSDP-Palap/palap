@@ -396,16 +396,7 @@ function GlobalOrderTrackingWidget() {
     if (!isCustomer) return;
     if (!userId || !isInitialized) return;
 
-    const timer = window.setInterval(() => {
-      if (activeOrderId) {
-        loadTracking(activeOrderId, { background: true });
-      }
-      getOngoingOrderIds();
-    }, 8000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
+    // Remove setInterval polling. Realtime is used instead.
   }, [isPaymentConfirmPage, isCustomer, userId, isInitialized, activeOrderId, loadTracking, getOngoingOrderIds]);
 
   const handleOpenChat = async () => {
