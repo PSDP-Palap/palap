@@ -710,6 +710,8 @@ function RouteComponent() {
     }
   };
 
+  const onPickImage = () => imageInputRef.current?.click();
+
   const onImageSelected = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
