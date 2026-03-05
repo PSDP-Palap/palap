@@ -1,4 +1,4 @@
-import { createRootRoute, Outlet, useLocation } from "@tanstack/react-router";
+import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { useEffect } from "react";
 import { Toaster } from "react-hot-toast";
@@ -15,9 +15,8 @@ export const Route = createRootRoute({
 
 function RootLayout() {
   const { isLoading, initialize, profile } = useUserStore();
-  const location = useLocation();
-  const isManagement = location.pathname.startsWith("/management");
   const isAdmin = profile?.role === "admin";
+  const isFreelance = profile?.role === "customer";
 
   useEffect(() => {
     initialize();
@@ -30,11 +29,11 @@ function RootLayout() {
   return (
     <>
       <Toaster position="bottom-right" reverseOrder={false} />
-      {!isManagement && <Navbar />}
+      {!isAdmin && <Navbar />}
       <main>
         <Outlet />
       </main>
-      {!isManagement && !isAdmin && (
+      {isFreelance && (
         <>
           <GlobalOrderTrackingWidget />
           <FloatingChatWidget />

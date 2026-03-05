@@ -349,7 +349,14 @@ function RouteComponent() {
       const nextAddressId = await persistLocation();
       if (!nextAddressId) return;
 
-      router.navigate({ to: "/payment" });
+      router.navigate({
+        to: "/payment",
+        search: {
+          subtotal,
+          tax,
+          total
+        }
+      });
     } catch (err: any) {
       setLocationError(
         err?.message || "Failed to save destination before payment."

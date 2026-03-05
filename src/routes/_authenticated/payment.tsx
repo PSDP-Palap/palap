@@ -13,6 +13,7 @@ import {
   useState
 } from "react";
 import toast from "react-hot-toast";
+import { z } from "zod";
 
 import cashIcon from "@/assets/1048961_97602-OL0FQH-995-removebg-preview.png";
 import cardIcon from "@/assets/2606579_5915-removebg-preview.png";
@@ -28,7 +29,6 @@ import { useCartStore } from "@/stores/useCartStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useUserStore } from "@/stores/useUserStore";
 import type { DeliveryTracking, PaymentMethod } from "@/types/payment";
-import type { Product } from "@/types/product";
 import {
   getOrderIdFromSystemMessage,
   isCompletedOrderStatus,
@@ -36,7 +36,14 @@ import {
 } from "@/utils/helpers";
 import supabase from "@/utils/supabase";
 
+const paymentSearchSchema = z.object({
+  subtotal: z.coerce.number().optional().default(0),
+  tax: z.coerce.number().optional().default(0),
+  total: z.coerce.number().optional().default(0)
+});
+
 export const Route = createFileRoute("/_authenticated/payment")({
+  validateSearch: paymentSearchSchema,
   component: RouteComponent
 });
 
@@ -71,6 +78,8 @@ function RouteComponent() {
       hash: state.location.hash || ""
     })
   });
+  const { subtotal, tax, total } = Route.useSearch();
+
   const cartItems = useCartStore((s) => s.items);
   const hasHydrated = useCartStore((s) => s.hasHydrated);
   const { profile, session } = useUserStore();
@@ -78,8 +87,6 @@ function RouteComponent() {
   const { setSelectedPaymentMethod, activeOrderId, setActiveOrderId } =
     useOrderStore();
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
@@ -114,51 +121,6 @@ function RouteComponent() {
     const timer = window.setTimeout(() => setCartHydrationTimedOut(true), 1500);
     return () => window.clearTimeout(timer);
   }, [hasHydrated]);
-
-  useEffect(() => {
-    const loadSelectedProducts = async () => {
-      if (!isCartReady) return;
-      const selectedIds = Object.keys(cartItems);
-      if (selectedIds.length === 0) {
-        setProducts([]);
-        setLoading(false);
-        return;
-      }
-      try {
-        setLoading(true);
-        const { data, error } = await supabase.from("products").select("*");
-        if (error) throw error;
-        const selectedSet = new Set(selectedIds.map(String));
-        const normalized = ((data as any[]) ?? [])
-          .map((item) => ({
-            id: String(item.product_id ?? item.id ?? ""),
-            name: item.name,
-            price: Number(item.price ?? 0),
-            pickup_address_id: item.pickup_address_id
-              ? String(item.pickup_address_id)
-              : null,
-            image_url: item.image_url ? String(item.image_url) : null
-          }))
-          .filter((item) => item.id && selectedSet.has(item.id));
-        setProducts(normalized as Product[]);
-      } catch (error) {
-        console.error("Failed to load selected products:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadSelectedProducts();
-  }, [cartItems, isCartReady]);
-
-  const subtotal = useMemo(() => {
-    return products.reduce((sum, product) => {
-      const quantity = cartItems[product.id || ""] || 0;
-      return sum + product.price * quantity;
-    }, 0);
-  }, [products, cartItems]);
-
-  const tax = Math.round(subtotal * 0.03 * 100) / 100;
-  const total = subtotal + tax;
 
   const formatCardNumber = (value: string) => {
     const digits = value.replace(/\D/g, "").slice(0, 16);
@@ -641,7 +603,7 @@ function RouteComponent() {
     setActiveOrderId
   ]);
 
-  if (!isCartReady || loading) {
+  if (!isCartReady) {
     return <Loading />;
   }
 

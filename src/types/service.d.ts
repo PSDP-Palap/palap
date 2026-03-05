@@ -1,4 +1,4 @@
-export type ServiceCategory = "DELIVERY" | "SHOPPING" | "CARE" | "DELIVERY_SESSION";
+export type ServiceCategory = "DELIVERY" | "SHOPPING" | "CARE";
 
 export interface Service {
   id?: string;
@@ -30,7 +30,7 @@ export interface ChatRoomListItem {
 }
 
 export interface ChatMessage {
-  id: any;
+  id: string;
   sender_id: string;
   message: string;
   created_at: string;

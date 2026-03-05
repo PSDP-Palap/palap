@@ -3,16 +3,16 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
-import { useCartStore } from "@/stores/useCartStore";
-import { useUserStore } from "@/stores/useUserStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import supabase from "@/utils/supabase";
-import type { Product } from "@/types/product";
 import { PaymentSummary } from "@/components/payment/PaymentSummary";
 import Loading from "@/components/shared/Loading";
+import { useCartStore } from "@/stores/useCartStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useUserStore } from "@/stores/useUserStore";
+import type { Product } from "@/types/product";
+import supabase from "@/utils/supabase";
 
 export const Route = createFileRoute("/_authenticated/checkout")({
-  component: CheckoutComponent,
+  component: CheckoutComponent
 });
 
 const ORDER_CREATE_STATUS_CANDIDATES = [
@@ -59,15 +59,19 @@ function CheckoutComponent() {
         setLoading(true);
         // 1. Load Products
         const selectedIds = Object.keys(cartItems);
-        const { data: productsData } = await supabase.from("products").select("*");
+        const { data: productsData } = await supabase
+          .from("products")
+          .select("*");
         const selectedSet = new Set(selectedIds.map(String));
         const normalized = ((productsData as any[]) ?? [])
           .map((item) => ({
             id: String(item.product_id ?? item.id ?? ""),
             name: item.name,
             price: Number(item.price ?? 0),
-            pickup_address_id: item.pickup_address_id ? String(item.pickup_address_id) : null,
-            image_url: item.image_url ? String(item.image_url) : null,
+            pickup_address_id: item.pickup_address_id
+              ? String(item.pickup_address_id)
+              : null,
+            image_url: item.image_url ? String(item.image_url) : null
           }))
           .filter((item) => item.id && selectedSet.has(item.id));
         setProducts(normalized as Product[]);
@@ -124,7 +128,12 @@ function CheckoutComponent() {
   }, [products, cartItems]);
 
   const completeOrder = async () => {
-    if (subtotal <= 0 || !currentUserId || products.length === 0 || !selectedPaymentMethod) {
+    if (
+      subtotal <= 0 ||
+      !currentUserId ||
+      products.length === 0 ||
+      !selectedPaymentMethod
+    ) {
       toast.error("Please ensure all order details are complete.");
       return;
     }
@@ -145,7 +154,7 @@ function CheckoutComponent() {
       const serviceBasePayload = {
         name: selectedProduct.name,
         price: total,
-        category: "DELIVERY_SESSION",
+        category: "DELIVERY",
         pickup_address: savedAddress.address_detail || savedAddress.name,
         dest_address: savedAddress.address_detail || savedAddress.name,
         image_url: selectedProduct.image_url
@@ -195,7 +204,9 @@ function CheckoutComponent() {
       }
 
       if (!createdService?.service_id) {
-        throw new Error(serviceInsertError?.message || "Failed to create service session.");
+        throw new Error(
+          serviceInsertError?.message || "Failed to create service session."
+        );
       }
 
       const serviceId = String(createdService.service_id);
@@ -246,11 +257,12 @@ function CheckoutComponent() {
 
         if (orderId) break;
 
-        const { data: fallbackOrder, error: fallbackOrderError } = await supabase
-          .from("orders")
-          .insert([payloadCandidate])
-          .select("order_id")
-          .single();
+        const { data: fallbackOrder, error: fallbackOrderError } =
+          await supabase
+            .from("orders")
+            .insert([payloadCandidate])
+            .select("order_id")
+            .single();
 
         if (!fallbackOrderError && fallbackOrder?.order_id) {
           orderId = String(fallbackOrder.order_id);
@@ -265,13 +277,15 @@ function CheckoutComponent() {
       }
 
       // Create Transaction
-      await supabase.from("transactions").insert([{
-        order_id: orderId,
-        customer_id: currentUserId,
-        amount: total,
-        payment_method: selectedPaymentMethod,
-        status: "paid"
-      }]);
+      await supabase.from("transactions").insert([
+        {
+          order_id: orderId,
+          customer_id: currentUserId,
+          amount: total,
+          payment_method: selectedPaymentMethod,
+          status: "paid"
+        }
+      ]);
 
       clearCart();
       setActiveOrderId(orderId);
@@ -294,7 +308,9 @@ function CheckoutComponent() {
       <main className="max-w-5xl mx-auto px-4">
         <div className="bg-[#FF914D] rounded-xl px-6 py-5 mb-4 text-white">
           <h1 className="text-3xl font-black uppercase">Final Review</h1>
-          <p className="text-sm text-orange-100 font-semibold">Please check your details before confirming</p>
+          <p className="text-sm text-orange-100 font-semibold">
+            Please check your details before confirming
+          </p>
         </div>
 
         <div className="bg-orange-100/70 rounded-xl p-4 md:p-5">
@@ -302,18 +318,35 @@ function CheckoutComponent() {
             <div className="md:col-span-2 space-y-4">
               {/* Items Summary */}
               <div className="bg-white rounded-xl p-4 shadow-sm border border-orange-100">
-                <h3 className="font-black text-[#4A2600] mb-3 uppercase text-sm tracking-wider">Items</h3>
+                <h3 className="font-black text-[#4A2600] mb-3 uppercase text-sm tracking-wider">
+                  Items
+                </h3>
                 <div className="space-y-3">
                   {orderRows.map((row) => (
                     <div key={row.id} className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-lg bg-orange-50 overflow-hidden flex-shrink-0 border border-orange-100">
-                        {row.imageUrl ? <img src={row.imageUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xl">📦</div>}
+                        {row.imageUrl ? (
+                          <img
+                            src={row.imageUrl}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xl">
+                            📦
+                          </div>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-[#4A2600] truncate text-sm">{row.name}</p>
-                        <p className="text-xs text-gray-500">Qty: {row.quantity} × ฿{row.unitPrice}</p>
+                        <p className="font-bold text-[#4A2600] truncate text-sm">
+                          {row.name}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Qty: {row.quantity} × ฿{row.unitPrice}
+                        </p>
                       </div>
-                      <p className="font-bold text-[#4A2600] text-sm">฿{row.subtotal}</p>
+                      <p className="font-bold text-[#4A2600] text-sm">
+                        ฿{row.subtotal}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -321,14 +354,22 @@ function CheckoutComponent() {
 
               {/* Location Summary */}
               <div className="bg-white rounded-xl p-4 shadow-sm border border-orange-100">
-                <h3 className="font-black text-[#4A2600] mb-3 uppercase text-sm tracking-wider">Delivery to</h3>
-                <p className="font-bold text-[#4A2600] text-sm">{savedAddress?.name || "Main Location"}</p>
-                <p className="text-xs text-gray-500 mt-1">{savedAddress?.address_detail || "No detail provided"}</p>
+                <h3 className="font-black text-[#4A2600] mb-3 uppercase text-sm tracking-wider">
+                  Delivery to
+                </h3>
+                <p className="font-bold text-[#4A2600] text-sm">
+                  {savedAddress?.name || "Main Location"}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {savedAddress?.address_detail || "No detail provided"}
+                </p>
               </div>
 
               {/* Payment Summary */}
               <div className="bg-white rounded-xl p-4 shadow-sm border border-orange-100">
-                <h3 className="font-black text-[#4A2600] mb-3 uppercase text-sm tracking-wider">Payment Method</h3>
+                <h3 className="font-black text-[#4A2600] mb-3 uppercase text-sm tracking-wider">
+                  Payment Method
+                </h3>
                 <div className="flex items-center gap-2">
                   <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-black text-[10px] uppercase">
                     {selectedPaymentMethod || "Not Selected"}

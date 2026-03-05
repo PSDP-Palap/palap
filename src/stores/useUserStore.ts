@@ -10,6 +10,7 @@ interface UserState {
   profile: Profile | null;
   isLoading: boolean;
   isInitialized: boolean;
+  lastSessionUserId: string | null; // Track the last user ID we processed
 
   setSession: (session: Session | null) => void;
   setProfile: (profile: Profile | null) => void;
@@ -25,6 +26,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   profile: null,
   isLoading: true,
   isInitialized: false,
+  lastSessionUserId: null,
 
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile }),
@@ -34,61 +36,65 @@ export const useUserStore = create<UserState>((set, get) => ({
       const {
         data: { session }
       } = await supabase.auth.getSession();
-      set({ session });
 
-      if (session) {
-        const roleFromMeta = session.user.app_metadata?.role as UserRole;
-
-        if (roleFromMeta === "admin") {
-          const adminProfile: Profile = {
-            id: session.user.id,
-            email: session.user.email || "",
-            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
-            role: "admin",
-            phone_number: null,
-            created_at: session.user.created_at,
-            address: null
-          };
-          set({ profile: adminProfile });
-          return adminProfile;
-        }
-
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", session.user.id)
-          .maybeSingle();
-
-        let address = null;
-        if (profile?.role === "customer") {
-          const { data: customer } = await supabase
-            .from("customers")
-            .select("address")
-            .eq("id", session.user.id)
-            .maybeSingle();
-          address = customer?.address;
-        }
-
-        const finalProfile = profile
-          ? ({
-            ...profile,
-            role: roleFromMeta || profile.role,
-            address
-          } as Profile)
-          : ({
-            id: session.user.id,
-            email: session.user.email || "",
-            full_name: session.user.user_metadata?.full_name || "",
-            role: roleFromMeta || "customer",
-            phone_number: null,
-            created_at: session.user.created_at || new Date().toISOString(),
-            address: null
-          } as Profile);
-
-        set({ profile: finalProfile });
-        return finalProfile;
+      if (!session) {
+        set({ session: null, profile: null, lastSessionUserId: null });
+        return null;
       }
-      return null;
+
+      const userId = session.user.id;
+      set({ session, lastSessionUserId: userId });
+
+      const roleFromMeta = session.user.app_metadata?.role as UserRole;
+
+      if (roleFromMeta === "admin") {
+        const adminProfile: Profile = {
+          id: userId,
+          email: session.user.email || "",
+          full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
+          role: "admin",
+          phone_number: null,
+          created_at: session.user.created_at,
+          address: null
+        };
+        set({ profile: adminProfile });
+        return adminProfile;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
+
+      let address = null;
+      if (profile?.role === "customer") {
+        const { data: customer } = await supabase
+          .from("customers")
+          .select("address")
+          .eq("id", userId)
+          .maybeSingle();
+        address = customer?.address;
+      }
+
+      const finalProfile = profile
+        ? ({
+          ...profile,
+          role: roleFromMeta || profile.role,
+          address
+        } as Profile)
+        : ({
+          id: userId,
+          email: session.user.email || "",
+          full_name: session.user.user_metadata?.full_name || "",
+          role: roleFromMeta || "customer",
+          phone_number: null,
+          created_at: session.user.created_at || new Date().toISOString(),
+          address: null
+        } as Profile);
+
+      set({ profile: finalProfile });
+      return finalProfile;
     } catch (error) {
       console.error("fetchProfile failed:", error);
       return null;
@@ -99,131 +105,49 @@ export const useUserStore = create<UserState>((set, get) => ({
     if (get().isInitialized) return;
 
     try {
-      // 1. Get initial session
-      const {
-        data: { session }
-      } = await supabase.auth.getSession();
-      set({ session });
-
-      // 2. If session exists, fetch profile
-      if (session) {
-        const roleFromMeta = session.user.app_metadata?.role as UserRole;
-
-        // If admin, skip profile fetch and use session data
-        if (roleFromMeta === "admin") {
-          set({
-            profile: {
-              id: session.user.id,
-              email: session.user.email || "",
-              full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
-              role: "admin",
-              phone_number: null,
-              created_at: session.user.created_at,
-              address: null
-            } as Profile
-          });
-        } else {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", session.user.id)
-            .maybeSingle();
-
-          let address = null;
-          if (profile?.role === "customer") {
-            const { data: customer } = await supabase
-              .from("customers")
-              .select("address")
-              .eq("id", profile.id)
-              .maybeSingle();
-            address = customer?.address;
-          }
-
-          if (profile) {
-            set({
-              profile: {
-                ...profile,
-                role: roleFromMeta || profile.role,
-                address
-              }
-            });
-          } else {
-            set({
-              profile: {
-                id: session.user.id,
-                email: session.user.email || "",
-                full_name: session.user.user_metadata?.full_name || "",
-                role: roleFromMeta || "customer",
-                phone_number: null,
-                created_at: session.user.created_at || new Date().toISOString(),
-                address: null
-              } as Profile
-            });
-          }
-        }
-      }
+      // 1. Initial fetch
+      await get().fetchProfile();
     } catch (error) {
       console.error("[UserStore] User initialization failed catastrophically:", error);
     } finally {
-      console.log("[UserStore] Initialization finished.");
       set({ isLoading: false, isInitialized: true });
     }
 
-    // 3. Setup Auth Listener
+    // 2. Setup Auth Listener with deduplication logic
     supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[UserStore] Auth state change event:", event);
-      set({ session });
+      const currentUserId = session?.user?.id || null;
+      const lastUserId = get().lastSessionUserId;
+
+      // Deduplication Logic:
+      // Skip if it's a SIGNED_IN/INITIAL_SESSION event for the same user we already loaded
+      // Unless it's a USER_UPDATED event which might mean metadata changed
+      if (
+        (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
+        currentUserId === lastUserId &&
+        get().profile
+      ) {
+        console.log("[UserStore] Skipping redundant auth event");
+        set({ session });
+        return;
+      }
 
       if (
         event === "SIGNED_IN" ||
         event === "USER_UPDATED" ||
-        event === "TOKEN_REFRESHED"
+        event === "TOKEN_REFRESHED" ||
+        event === "INITIAL_SESSION"
       ) {
         if (session) {
-          const roleFromMeta = session.user.app_metadata?.role as UserRole;
-
-          if (roleFromMeta === "admin") {
-            set({
-              profile: {
-                id: session.user.id,
-                email: session.user.email || "",
-                full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
-                role: "admin",
-                phone_number: null,
-                created_at: session.user.created_at,
-                address: null
-              } as Profile
-            });
-          } else {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("*")
-              .eq("id", session.user.id)
-              .maybeSingle();
-
-            let address = null;
-            if (profile?.role === "customer") {
-              const { data: customer } = await supabase
-                .from("customers")
-                .select("address")
-                .eq("id", profile.id)
-                .maybeSingle();
-              address = customer?.address;
-            }
-
-            if (profile) {
-              set({
-                profile: {
-                  ...profile,
-                  role: roleFromMeta || profile.role,
-                  address
-                }
-              });
-            }
+          // If token refreshed but user is the same, just update session object
+          if (event === "TOKEN_REFRESHED" && currentUserId === lastUserId) {
+            set({ session });
+            return;
           }
+
+          await get().fetchProfile();
         }
       } else if (event === "SIGNED_OUT") {
-        set({ profile: null });
+        set({ session: null, profile: null, lastSessionUserId: null });
       }
     });
   },
@@ -271,7 +195,16 @@ export const useUserStore = create<UserState>((set, get) => ({
   },
   signOut: async () => {
     await supabase.auth.signOut();
-    set({ session: null, profile: null });
+    
+    // Clear cart on logout
+    try {
+      const { useCartStore } = await import("./useCartStore");
+      useCartStore.getState().clear();
+    } catch (e) {
+      console.error("Failed to clear cart during logout:", e);
+    }
+
+    set({ session: null, profile: null, lastSessionUserId: null });
     toast.success("Signed out successfully");
   }
 }));

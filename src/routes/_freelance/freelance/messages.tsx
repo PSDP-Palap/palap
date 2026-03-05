@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import MessagesTab from "@/components/freelance/tabs/MessagesTab";
+import MessagesTab from "@/components/freelance/MessagesTab";
 import { useUserStore } from "@/stores/useUserStore";
 import type { ConversationItem } from "@/types/chat";
 import { cleanPreviewMessage, isSystemMessage } from "@/utils/helpers";
@@ -17,7 +17,7 @@ function MessagesRoute() {
   const [freelanceChats, setFreelanceChats] = useState<ConversationItem[]>([]);
   const [loadingFreelanceChats, setLoadingFreelanceChats] = useState(false);
 
-  const loadFreelanceChats = async () => {
+  const loadFreelanceChats = useCallback(async () => {
     if (!currentUserId) return;
     try {
       setLoadingFreelanceChats(true);
@@ -110,11 +110,11 @@ function MessagesRoute() {
     } finally {
       setLoadingFreelanceChats(false);
     }
-  };
+  }, [currentUserId, profile]);
 
   useEffect(() => {
     loadFreelanceChats();
-  }, [currentUserId]);
+  }, [loadFreelanceChats]);
 
   return (
     <MessagesTab

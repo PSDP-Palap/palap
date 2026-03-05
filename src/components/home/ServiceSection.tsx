@@ -7,22 +7,20 @@ import type { ServiceCategory } from "@/types/service";
 const categoryIconMap: Record<ServiceCategory, string> = {
   SHOPPING: "🍲",
   DELIVERY: "🚐",
-  CARE: "🦮",
-  DELIVERY_SESSION: "📦"
+  CARE: "🦮"
 };
 
 const categoryLabelMap: Record<ServiceCategory, string> = {
   SHOPPING: "ซื้อของ",
   DELIVERY: "รับ-ส่ง",
-  CARE: "ดูแลสัตว์เลี้ยง",
-  DELIVERY_SESSION: "ออเดอร์"
+  CARE: "ดูแลสัตว์เลี้ยง"
 };
 
 const ServiceSection = () => {
   const { services, loadServices } = useServiceStore();
 
   useEffect(() => {
-    loadServices();
+    loadServices(3);
   }, [loadServices]);
 
   return (
@@ -45,7 +43,7 @@ const ServiceSection = () => {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-6">
-        {services.slice(0, 3).map((service) => (
+        {services.map((service) => (
           <Link
             to="/service/$id"
             params={{ id: service.service_id || service.id || "" }}

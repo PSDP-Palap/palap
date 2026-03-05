@@ -5,7 +5,7 @@ import supabase from "@/utils/supabase";
 
 type ServiceState = {
   services: Service[];
-  loadServices: () => Promise<void>;
+  loadServices: (limit?: number) => Promise<void>;
   createService: (service: Omit<Service, "service_id">) => Promise<void>;
   updateService: (
     serviceId: string,
@@ -17,11 +17,17 @@ type ServiceState = {
 
   export const useServiceStore = create<ServiceState>((set) => ({
   services: [],
-  loadServices: async () => {
-    const { data, error } = await supabase
+  loadServices: async (limit?: number) => {
+    let query = supabase
       .from("services")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (limit) {
+      query = query.limit(limit);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Failed to load services from Supabase", error);

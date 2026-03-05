@@ -3,11 +3,11 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ServiceChat } from "@/components/service/ServiceChat";
+import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
 import type { ChatRoomListItem } from "@/types/service";
 import { cleanPreviewMessage, withTimeout } from "@/utils/helpers";
 import supabase, { isUuidLike } from "@/utils/supabase";
-import Loading from "@/components/shared/Loading";
 
 export const Route = createFileRoute("/_authenticated/chat/$id")({
   component: ChatRouteComponent,
@@ -48,6 +48,17 @@ const isColumnMissingError = (error: any) => {
     message.includes("does not exist") ||
     message.includes("could not find")
   );
+};
+
+const getTagValue = (message: string, tag: string) => {
+  const match = message.match(new RegExp(`${tag}:([^\\s]+)`, "i"));
+  return match?.[1] ? String(match[1]) : "";
+};
+
+const getPriceFromMessage = (message: string) => {
+  const raw = getTagValue(message, "PRICE");
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
 };
 
 function ChatRouteComponent() {
@@ -96,17 +107,6 @@ function ChatRouteComponent() {
     typeof message === "string" && message.startsWith(CHAT_IMAGE_PREFIX);
 
   const toImageMessage = (url: string) => `${CHAT_IMAGE_PREFIX} ${url}`;
-
-  const getTagValue = (message: string, tag: string) => {
-    const match = message.match(new RegExp(`${tag}:([^\\s]+)`, "i"));
-    return match?.[1] ? String(match[1]) : "";
-  };
-
-  const getPriceFromMessage = (message: string) => {
-    const raw = getTagValue(message, "PRICE");
-    const value = Number(raw);
-    return Number.isFinite(value) ? value : 0;
-  };
 
   const loadRoomInfo = useCallback(async () => {
     if (!roomId || !currentUserId) return;
@@ -246,7 +246,7 @@ function ChatRouteComponent() {
     const fetchRooms = async () => {
       const now = Date.now();
       if (now - lastFetchRoomsTimeRef.current < 2000) return; // Throttle to every 2s
-      
+
       try {
         setLoadingChatRoomList(true);
         lastFetchRoomsTimeRef.current = now;
@@ -322,9 +322,7 @@ function ChatRouteComponent() {
           const roomIds = resolvedRooms.map((r) => r.id);
           const orderIds = Array.from(
             new Set(
-              resolvedRooms
-                .map((r) => String(r.order_id || ""))
-                .filter(Boolean)
+              resolvedRooms.map((r) => String(r.order_id || "")).filter(Boolean)
             )
           );
 
@@ -383,7 +381,9 @@ function ChatRouteComponent() {
             }
           });
 
-          const extraPartnerIds = Array.from(latestNonSelfSenderByRoom.values());
+          const extraPartnerIds = Array.from(
+            latestNonSelfSenderByRoom.values()
+          );
           if (extraPartnerIds.length > 0) {
             const missingPartnerIds = extraPartnerIds.filter(
               (id) => id && isUuidLike(String(id)) && !pMap.has(String(id))
@@ -410,7 +410,8 @@ function ChatRouteComponent() {
             const isCustomer = customerId === String(currentUserId);
             let partnerId = isCustomer ? freelancerId : customerId;
             if (!partnerId || String(partnerId) === String(currentUserId)) {
-              partnerId = latestNonSelfSenderByRoom.get(String(r.id)) || partnerId;
+              partnerId =
+                latestNonSelfSenderByRoom.get(String(r.id)) || partnerId;
             }
             const p = pMap.get(String(partnerId));
             const last = msgMap.get(r.id);
@@ -449,7 +450,7 @@ function ChatRouteComponent() {
     fetchRooms();
   }, [currentUserId]);
 
-  const sendMessage = async (overrideMessage?: string) => {
+  const sendMessage = useCallback(async (overrideMessage?: string) => {
     const text = (overrideMessage || chatInput).trim();
     if (!roomId || !currentUserId || !text || !orderId) return;
 
@@ -473,7 +474,7 @@ function ChatRouteComponent() {
     } finally {
       setSending(false);
     }
-  };
+  }, [chatInput, roomId, currentUserId, orderId]);
 
   const onImageSelected = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -536,13 +537,16 @@ function ChatRouteComponent() {
 
     return {
       ...item,
-      partnerName: otherParticipant.full_name || otherParticipant.email || item.partnerName,
+      partnerName:
+        otherParticipant.full_name ||
+        otherParticipant.email ||
+        item.partnerName,
       partnerAvatarUrl:
         otherParticipant.avatar_url ||
         otherParticipant.image_url ||
         otherParticipant.photo_url ||
         item.partnerAvatarUrl ||
-        null,
+        null
     };
   });
 
@@ -563,13 +567,10 @@ function ChatRouteComponent() {
       );
     });
     const isDeliverySession =
-      String(serviceMeta?.category || "").toUpperCase() === "DELIVERY_SESSION";
+      String(serviceMeta?.category || "").toUpperCase() === "DELIVERY";
 
     const enabled =
-      !!serviceMeta &&
-      !isDeliveryFlow &&
-      !isDeliverySession &&
-      hasHireAccepted;
+      !!serviceMeta && !isDeliveryFlow && !isDeliverySession && hasHireAccepted;
 
     if (!enabled) {
       return {
@@ -620,7 +621,11 @@ function ChatRouteComponent() {
 
     const paymentHeld = paymentHeldAt > 0;
     const isReleased = latestReleasedAt > 0;
-    const latestReviewAt = Math.max(latestRevisionAt, latestApprovedAt, latestReleasedAt);
+    const latestReviewAt = Math.max(
+      latestRevisionAt,
+      latestApprovedAt,
+      latestReleasedAt
+    );
     const awaitingCustomerReview =
       latestSubmittedAt > 0 && latestSubmittedAt > latestReviewAt;
 
@@ -629,10 +634,12 @@ function ChatRouteComponent() {
       statusText = "Payment is held. Freelancer can submit work for review.";
     }
     if (awaitingCustomerReview && !isReleased) {
-      statusText = "Work submitted. Waiting for customer approval or revision request.";
+      statusText =
+        "Work submitted. Waiting for customer approval or revision request.";
     }
     if (latestRevisionAt > latestSubmittedAt && !isReleased) {
-      statusText = "Customer requested revision. Freelancer should submit an updated result.";
+      statusText =
+        "Customer requested revision. Freelancer should submit an updated result.";
     }
     if (isReleased) {
       statusText = "Work approved. Payment released to freelancer earning.";
@@ -645,11 +652,20 @@ function ChatRouteComponent() {
       canPayAndStartWork:
         !isCurrentUserFreelancerInRoom && !paymentHeld && !isReleased,
       canSubmitWork:
-        isCurrentUserFreelancerInRoom && paymentHeld && !isReleased && !awaitingCustomerReview,
+        isCurrentUserFreelancerInRoom &&
+        paymentHeld &&
+        !isReleased &&
+        !awaitingCustomerReview,
       canApproveWork:
-        !isCurrentUserFreelancerInRoom && paymentHeld && !isReleased && awaitingCustomerReview,
+        !isCurrentUserFreelancerInRoom &&
+        paymentHeld &&
+        !isReleased &&
+        awaitingCustomerReview,
       canDeclineWork:
-        !isCurrentUserFreelancerInRoom && paymentHeld && !isReleased && awaitingCustomerReview
+        !isCurrentUserFreelancerInRoom &&
+        paymentHeld &&
+        !isReleased &&
+        awaitingCustomerReview
     };
   }, [messages, serviceMeta, isCurrentUserFreelancerInRoom]);
 
@@ -662,7 +678,8 @@ function ChatRouteComponent() {
   );
 
   const payAndStartWork = useCallback(async () => {
-    if (!serviceWorkflow.enabled || !serviceMeta || !activeRoomParticipants) return;
+    if (!serviceWorkflow.enabled || !serviceMeta || !activeRoomParticipants)
+      return;
     const agreedPrice = Number(serviceWorkflow.agreedPrice || 0);
     if (agreedPrice <= 0) {
       setChatError("Agreed price must be greater than 0.");
@@ -685,7 +702,12 @@ function ChatRouteComponent() {
     } finally {
       setWorkflowBusyAction(null);
     }
-  }, [serviceWorkflow, serviceMeta, activeRoomParticipants, sendSystemWorkflowMessage]);
+  }, [
+    serviceWorkflow,
+    serviceMeta,
+    activeRoomParticipants,
+    sendSystemWorkflowMessage
+  ]);
 
   const submitWork = useCallback(async () => {
     if (!serviceWorkflow.enabled || !serviceMeta || !currentUserId) return;
@@ -714,7 +736,13 @@ function ChatRouteComponent() {
   }, [serviceWorkflow, serviceMeta, currentUserId, sendSystemWorkflowMessage]);
 
   const approveWork = useCallback(async () => {
-    if (!serviceWorkflow.enabled || !serviceMeta || !currentUserId || !activeRoomParticipants) return;
+    if (
+      !serviceWorkflow.enabled ||
+      !serviceMeta ||
+      !currentUserId ||
+      !activeRoomParticipants
+    )
+      return;
 
     const agreedPrice = Number(serviceWorkflow.agreedPrice || 0);
     if (agreedPrice <= 0) {
@@ -738,7 +766,13 @@ function ChatRouteComponent() {
     } finally {
       setWorkflowBusyAction(null);
     }
-  }, [serviceWorkflow, serviceMeta, currentUserId, activeRoomParticipants, sendSystemWorkflowMessage]);
+  }, [
+    serviceWorkflow,
+    serviceMeta,
+    currentUserId,
+    activeRoomParticipants,
+    sendSystemWorkflowMessage
+  ]);
 
   return (
     <ServiceChat

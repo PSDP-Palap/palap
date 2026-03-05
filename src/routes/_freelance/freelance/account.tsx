@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+
+import AccountSettingTab from "@/components/freelance/AccountSettingTab";
 import { useUserStore } from "@/stores/useUserStore";
-import AccountSettingTab from "@/components/freelance/tabs/AccountSettingTab";
 
 export const Route = createFileRoute("/_freelance/freelance/account")({
   component: AccountRoute
@@ -9,10 +10,5 @@ export const Route = createFileRoute("/_freelance/freelance/account")({
 function AccountRoute() {
   const { profile, session } = useUserStore();
 
-  return (
-    <AccountSettingTab
-      profile={profile}
-      session={session}
-    />
-  );
+  return <AccountSettingTab profile={profile} session={session} />;
 }

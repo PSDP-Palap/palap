@@ -1,19 +1,16 @@
-import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import supabase from "@/utils/supabase";
 import { Search } from "lucide-react";
+import { useEffect, useState } from "react";
 
-import { useCartStore } from "@/stores/useCartStore";
-
-import { ProductCard } from "@/components/product/ProductCard";
 import { CartFooter } from "@/components/product/CartFooter";
-import type { Product } from "@/types/product";
+import { ProductCard } from "@/components/product/ProductCard";
 import Loading from "@/components/shared/Loading";
+import { useCartStore } from "@/stores/useCartStore";
+import type { Product } from "@/types/product";
+import supabase from "@/utils/supabase";
 
 export const Route = createFileRoute("/product/")({
   loader: async () => {
-    console.log("[Router] Product loader started");
-    
     // Direct query without withTimeout, similar to AdminTab fetch pattern
     const { data, error } = await supabase
       .from("products")
@@ -22,11 +19,8 @@ export const Route = createFileRoute("/product/")({
       .limit(100);
 
     if (error) {
-      console.error("[Router] Supabase error fetching products:", error);
       throw error;
     }
-
-    console.log("[Router] Product loader finished, count:", data?.length);
 
     const products: Product[] = (data || []).map((item: any) => ({
       id: String(item.product_id),
@@ -118,7 +112,7 @@ function RouteComponent() {
   return (
     <div className="min-h-screen bg-[#F9E6D8] font-sans pb-32">
       <main className="max-w-6xl mx-auto p-6 pt-28">
-        <div className="bg-[#FF914D] rounded-2xl p-8 mb-8 relative overflow-hidden flex justify-between items-center shadow-lg border-b-4 border-orange-600/20">
+        <div className="flex items-center pl-8 bg-[#FF914D] rounded-2xl mb-8 relative overflow-hidden shadow-lg">
           <div className="z-10">
             <h1 className="text-3xl font-black text-white uppercase">
               SELECT PRODUCTS
@@ -127,6 +121,7 @@ function RouteComponent() {
               High quality supplies for your pet
             </p>
           </div>
+          <img src="/cat.png" alt="cat" className="ml-auto" />
         </div>
 
         <div className="mb-8 bg-white rounded-xl border border-orange-200 p-2 shadow-sm flex items-center gap-2">

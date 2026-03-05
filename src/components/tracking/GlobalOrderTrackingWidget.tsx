@@ -1,14 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useRouter, useRouterState } from "@tanstack/react-router";
+import { Truck, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
+import Loading from "@/components/shared/Loading";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useUserStore } from "@/stores/useUserStore";
 import type { DeliveryTracking } from "@/types/payment";
-import { getOrderIdFromSystemMessage, isCompletedOrderStatus } from "@/utils/helpers";
+import {
+  getOrderIdFromSystemMessage,
+  isCompletedOrderStatus
+} from "@/utils/helpers";
 import supabase, { isUuidLike } from "@/utils/supabase";
-import Loading from "@/components/shared/Loading";
 
 const WAITING_STATUS_SET = new Set([
   "",
@@ -264,8 +268,8 @@ function GlobalOrderTrackingWidget() {
           hasDoneMarker || isCompletedOrderStatus(rawStatus)
             ? "delivered"
             : isAssigned && WAITING_STATUS_SET.has(rawStatus)
-            ? "serving"
-            : rawStatus || (isAssigned ? "serving" : "waiting");
+              ? "serving"
+              : rawStatus || (isAssigned ? "serving" : "waiting");
 
         if (isCompletedOrderStatus(nextStatus)) {
           suppressAutoPickRef.current = true;
@@ -398,7 +402,15 @@ function GlobalOrderTrackingWidget() {
     if (!userId || !isInitialized) return;
 
     // Remove setInterval polling. Realtime is used instead.
-  }, [isPaymentConfirmPage, isCustomer, userId, isInitialized, activeOrderId, loadTracking, getOngoingOrderIds]);
+  }, [
+    isPaymentConfirmPage,
+    isCustomer,
+    userId,
+    isInitialized,
+    activeOrderId,
+    loadTracking,
+    getOngoingOrderIds
+  ]);
 
   const handleOpenChat = async () => {
     const targetOrderId = tracking?.orderId || activeOrderId;
@@ -476,7 +488,13 @@ function GlobalOrderTrackingWidget() {
     }
   };
 
-  if (!isInitialized || !userId || !isCustomer || isActiveChatPage || isPaymentConfirmPage) {
+  if (
+    !isInitialized ||
+    !userId ||
+    !isCustomer ||
+    isActiveChatPage ||
+    isPaymentConfirmPage
+  ) {
     return null;
   }
 
@@ -633,19 +651,6 @@ function GlobalOrderTrackingWidget() {
               <button
                 type="button"
                 onClick={() => {
-                  router.navigate({
-                    to: "/payment",
-                    hash: "#order-history"
-                  });
-                  setOpen(false);
-                }}
-                className="flex-1 px-3 py-2 rounded-lg bg-orange-100 text-[#A03F00] text-xs font-black hover:bg-orange-200 transition-colors"
-              >
-                Order History
-              </button>
-              <button
-                type="button"
-                onClick={() => {
                   if (activeOrderId) loadTracking(activeOrderId);
                 }}
                 disabled={loading}
@@ -670,9 +675,13 @@ function GlobalOrderTrackingWidget() {
         <button
           type="button"
           onClick={() => setOpen((prev) => !prev)}
-          className="w-14 h-14 rounded-full bg-[#D35400] hover:bg-[#b34700] text-white shadow-xl border border-orange-300 font-black text-lg flex items-center justify-center transition-transform active:scale-95"
+          className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#D35400] hover:bg-[#b34700] text-white shadow-2xl flex items-center justify-center transition-transform active:scale-95"
         >
-          {open ? "×" : "🚚"}
+          {open ? (
+            <X className="w-7 h-7 md:w-8 md:h-8" />
+          ) : (
+            <Truck className="w-7 h-7 md:w-8 md:h-8" />
+          )}
         </button>
       </div>
     </aside>

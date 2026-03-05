@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import DashboardTabContent from "@/components/freelance/DashboardTab";
 import { useUserStore } from "@/stores/useUserStore";
+import type { Service } from "@/types/service";
 import supabase from "@/utils/supabase";
-import DashboardTabContent from "@/components/freelance/tabs/DashboardTab";
-import Loading from "@/components/shared/Loading";
 
 export const Route = createFileRoute("/_freelance/freelance/dashboard")({
   component: DashboardRoute
@@ -12,7 +13,7 @@ export const Route = createFileRoute("/_freelance/freelance/dashboard")({
 function DashboardRoute() {
   const { profile, session } = useUserStore();
   const currentUserId = profile?.id || session?.user?.id || null;
-  const [services, setServices] = useState<any[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [earningSummary, setEarningSummary] = useState({
     totalIncome: 0,
@@ -21,17 +22,28 @@ function DashboardRoute() {
     pendingOrders: 0
   });
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     if (!currentUserId) return;
     setLoadingServices(true);
     try {
-      // Load services
-      const { data: svcData } = await supabase.from("services").select("*").or(`freelancer_id.eq.${currentUserId},freelance_id.eq.${currentUserId},created_by.eq.${currentUserId}`).limit(5);
-      setServices(svcData || []);
+      const { data: svcData } = await supabase
+        .from("services")
+        .select("*")
+        .eq("created_by", currentUserId)
+        .limit(5);
 
-      // Load earnings
-      const { data: earnings } = await supabase.from("freelance_earnings").select("*").eq("freelancer_id", currentUserId);
-      const total = (earnings || []).reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      setServices((svcData as Service[]) || []);
+
+      const { data: earnings } = await supabase
+        .from("freelance_earnings")
+        .select("*")
+        .eq("freelance_id", currentUserId);
+
+      const total = (earnings || []).reduce(
+        (sum, e) => sum + Number(e.amount || 0),
+        0
+      );
+
       setEarningSummary({
         totalIncome: total,
         totalOrders: (earnings || []).length,
@@ -41,11 +53,11 @@ function DashboardRoute() {
     } finally {
       setLoadingServices(false);
     }
-  };
+  }, [currentUserId]);
 
   useEffect(() => {
     loadDashboardData();
-  }, [currentUserId]);
+  }, [loadDashboardData]);
 
   return (
     <DashboardTabContent

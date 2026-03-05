@@ -41,7 +41,9 @@ const LoginForm = () => {
       toast.success("Welcome back!", { id: loadingToast });
 
       // Check role and navigate
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
       const role = session?.user.app_metadata?.role;
 
       if (role === "admin") {
@@ -50,7 +52,9 @@ const LoginForm = () => {
         router.navigate({ to: "/" });
       }
     } catch {
-      toast.error("ไม่สามารถล็อกอินได้ กรุณาลองใหม่อีกครั้ง", { id: loadingToast });
+      toast.error("ไม่สามารถล็อกอินได้ กรุณาลองใหม่อีกครั้ง", {
+        id: loadingToast
+      });
     } finally {
       setSubmitting(false);
     }
@@ -64,7 +68,7 @@ const LoginForm = () => {
         </label>
         <input
           type="email"
-          placeholder="example@mail.com"
+          placeholder="example@gmail.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required

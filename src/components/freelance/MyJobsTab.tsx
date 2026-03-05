@@ -1,16 +1,16 @@
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { MapContainer, TileLayer, useMapEvents } from "react-leaflet";
+
 import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
-import type { 
-  PendingHireRequestItem, 
-  OngoingServiceJobItem, 
+import type {
   DeliveryOrderItem,
-  LocationField
+  LocationField,
+  OngoingServiceJobItem,
+  PendingHireRequestItem
 } from "@/types/freelance";
+import type { Service, ServiceCategory } from "@/types/service";
 
 interface MyJobsTabProps {
   refreshJobBoard: () => Promise<void>;
@@ -29,17 +29,28 @@ interface MyJobsTabProps {
   myDeliveryOrders: DeliveryOrderItem[];
   completeDeliveryOrder: (order: DeliveryOrderItem) => Promise<void>;
   completingOrderId: string | null;
-  createMyService: (data: any) => Promise<void>;
+  createMyService: (
+    data: Partial<Service> & {
+      pickupAddress?: string;
+      destinationAddress?: string;
+      mapLat?: number;
+      mapLng?: number;
+    }
+  ) => Promise<void>;
   creating: boolean;
   repairMyServiceLinks: () => Promise<void>;
   repairingLinks: boolean;
-  services: any[];
+  services: Service[];
   loadingServices: boolean;
   error: string | null;
   success: string | null;
 }
 
-function MapCenterTracker({ onCenterChange }: { onCenterChange: (lat: number, lng: number) => void }) {
+function MapCenterTracker({
+  onCenterChange
+}: {
+  onCenterChange: (lat: number, lng: number) => void;
+}) {
   const map = useMapEvents({
     moveend: () => {
       const center = map.getCenter();
@@ -84,14 +95,15 @@ const MyJobsTab = ({
   // Local form state
   const [name, setName] = useState("");
   const [price, setPrice] = useState(0);
-  const [category, setCategory] = useState("DELIVERY");
+  const [category, setCategory] = useState<ServiceCategory>("DELIVERY");
   const [pickupAddress, setPickupAddress] = useState("");
   const [destinationAddress, setDestinationAddress] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [mapLat, setMapLat] = useState(13.7563);
   const [mapLng, setMapLng] = useState(100.5018);
   const [mapExpanded, setMapExpanded] = useState(false);
-  const [activeLocationField, setActiveLocationField] = useState<LocationField>("pickup");
+  const [activeLocationField, setActiveLocationField] =
+    useState<LocationField>("pickup");
   const [resolvingAddress, setResolvingAddress] = useState(false);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,7 +118,10 @@ const MyJobsTab = ({
     reader.readAsDataURL(file);
   };
 
-  const resolveAddressFromCoordinates = async (latitude: number, longitude: number) => {
+  const resolveAddressFromCoordinates = async (
+    latitude: number,
+    longitude: number
+  ) => {
     try {
       setResolvingAddress(true);
       const response = await fetch(
@@ -142,7 +157,7 @@ const MyJobsTab = ({
       category,
       pickupAddress,
       destinationAddress,
-      imageUrl,
+      image_url: imageUrl,
       mapLat,
       mapLng
     });
@@ -166,8 +181,10 @@ const MyJobsTab = ({
     [mapBounds.top, mapBounds.right]
   ];
 
+  const isAnyLoading = loadingDeliveryOrders || loadingPendingHireRequests || loadingOngoingServiceJobs;
+
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 min-h-full pb-10 flex flex-col ${isAnyLoading ? 'justify-center' : ''}`}>
       <div className="bg-white rounded-xl border border-orange-100 p-4 shadow-sm">
         <h2 className="text-xl font-black text-[#4A2600] mb-2">My Jobs</h2>
         <p className="text-sm text-gray-600">
@@ -177,7 +194,9 @@ const MyJobsTab = ({
 
       <section className="bg-white rounded-xl border border-orange-100 p-5 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xl font-black text-[#4A2600]">Service Job Board</h3>
+          <h3 className="text-xl font-black text-[#4A2600]">
+            Service Job Board
+          </h3>
           <div className="text-right">
             <button
               type="button"
@@ -194,7 +213,9 @@ const MyJobsTab = ({
             </button>
             <p className="mt-1 text-[10px] text-gray-500">
               Last updated:{" "}
-              {jobBoardLastUpdatedAt ? new Date(jobBoardLastUpdatedAt).toLocaleTimeString() : "-"}
+              {jobBoardLastUpdatedAt
+                ? new Date(jobBoardLastUpdatedAt).toLocaleTimeString()
+                : "-"}
             </p>
           </div>
         </div>
@@ -202,7 +223,9 @@ const MyJobsTab = ({
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div className="rounded-xl border border-orange-100 p-4 bg-orange-50/40">
             <div className="flex items-center justify-between gap-2 mb-2">
-              <h4 className="font-black text-[#4A2600]">Pending Hire Requests</h4>
+              <h4 className="font-black text-[#4A2600]">
+                Pending Hire Requests
+              </h4>
               <span className="px-2 py-1 rounded-full bg-orange-100 text-[#A03F00] text-xs font-black">
                 {pendingHireRequests.length}
               </span>
@@ -211,13 +234,22 @@ const MyJobsTab = ({
             {loadingPendingHireRequests ? (
               <Loading fullScreen={false} size={40} />
             ) : pendingHireRequests.length === 0 ? (
-              <p className="text-sm text-gray-500">No pending hire requests right now.</p>
+              <p className="text-sm text-gray-500">
+                No pending hire requests right now.
+              </p>
             ) : (
               <div className="space-y-2">
                 {pendingHireRequests.map((request) => (
-                  <div key={request.roomId} className="bg-white border border-orange-100 rounded-lg p-3 space-y-1">
-                    <p className="font-bold text-[#4A2600] truncate">{request.customerName}</p>
-                    <p className="text-xs text-orange-700 truncate">{request.serviceName}</p>
+                  <div
+                    key={request.roomId}
+                    className="bg-white border border-orange-100 rounded-lg p-3 space-y-1"
+                  >
+                    <p className="font-bold text-[#4A2600] truncate">
+                      {request.customerName}
+                    </p>
+                    <p className="text-xs text-orange-700 truncate">
+                      {request.serviceName}
+                    </p>
                     <div className="rounded-md border border-orange-100 bg-orange-50 px-2.5 py-2 mt-1">
                       <p className="text-[11px] font-bold uppercase tracking-wide text-orange-700/80 mb-1">
                         Customer Message
@@ -227,7 +259,10 @@ const MyJobsTab = ({
                       </p>
                     </div>
                     <p className="text-xs text-gray-500">
-                      Requested: {request.requestedAt ? new Date(request.requestedAt).toLocaleString() : "-"}
+                      Requested:{" "}
+                      {request.requestedAt
+                        ? new Date(request.requestedAt).toLocaleString()
+                        : "-"}
                     </p>
                     <div className="flex items-center justify-end gap-2 mt-2">
                       <button
@@ -236,7 +271,9 @@ const MyJobsTab = ({
                         disabled={acceptingHireRoomId === request.roomId}
                         className="px-3 py-1.5 rounded-md bg-green-600 text-white text-xs font-black disabled:bg-gray-300"
                       >
-                        {acceptingHireRoomId === request.roomId ? "Accepting..." : "Accept Request"}
+                        {acceptingHireRoomId === request.roomId
+                          ? "Accepting..."
+                          : "Accept Request"}
                       </button>
                     </div>
                   </div>
@@ -247,7 +284,9 @@ const MyJobsTab = ({
 
           <div className="rounded-xl border border-orange-100 p-4 bg-orange-50/40">
             <div className="flex items-center justify-between gap-2 mb-2">
-              <h4 className="font-black text-[#4A2600]">Ongoing Service Jobs</h4>
+              <h4 className="font-black text-[#4A2600]">
+                Ongoing Service Jobs
+              </h4>
               <span className="px-2 py-1 rounded-full bg-orange-100 text-[#A03F00] text-xs font-black">
                 {ongoingServiceJobs.length}
               </span>
@@ -260,14 +299,26 @@ const MyJobsTab = ({
             ) : (
               <div className="space-y-2">
                 {ongoingServiceJobs.map((job) => (
-                  <div key={job.roomId} className="bg-white border border-orange-100 rounded-lg p-3 space-y-1">
-                    <p className="font-bold text-[#4A2600] truncate">{job.serviceName}</p>
-                    <p className="text-xs text-orange-700 truncate">Customer: {job.customerName}</p>
+                  <div
+                    key={job.roomId}
+                    className="bg-white border border-orange-100 rounded-lg p-3 space-y-1"
+                  >
+                    <p className="font-bold text-[#4A2600] truncate">
+                      {job.serviceName}
+                    </p>
+                    <p className="text-xs text-orange-700 truncate">
+                      Customer: {job.customerName}
+                    </p>
                     <p className="text-xs text-gray-500">
-                      Accepted: {job.acceptedAt ? new Date(job.acceptedAt).toLocaleString() : "-"}
+                      Accepted:{" "}
+                      {job.acceptedAt
+                        ? new Date(job.acceptedAt).toLocaleString()
+                        : "-"}
                     </p>
                     <div className="flex items-center justify-between mt-2">
-                      <p className="font-black text-[#5D2611]">฿ {job.price.toFixed(2)}</p>
+                      <p className="font-black text-[#5D2611]">
+                        ฿ {job.price.toFixed(2)}
+                      </p>
                       <Link
                         to="/chat/$id"
                         params={{ id: job.roomId }}
@@ -285,29 +336,48 @@ const MyJobsTab = ({
       </section>
 
       <section className="bg-white rounded-xl border border-orange-100 p-5 shadow-sm space-y-4">
-        <h3 className="text-xl font-black text-[#4A2600]">Delivery Job Board</h3>
+        <h3 className="text-xl font-black text-[#4A2600]">
+          Delivery Job Board
+        </h3>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div className="rounded-xl border border-orange-100 p-4 bg-orange-50/40">
             <h4 className="font-black text-[#4A2600] mb-2">Waiting Orders</h4>
             {availableDeliveryOrders.length === 0 ? (
-              <p className="text-sm text-gray-500">No waiting delivery orders.</p>
+              <p className="text-sm text-gray-500">
+                No waiting delivery orders.
+              </p>
             ) : (
               <div className="space-y-2">
                 {availableDeliveryOrders.map((order) => (
-                  <div key={order.orderId} className="bg-white border border-orange-100 rounded-lg p-3 space-y-1">
-                    <p className="text-xs text-gray-500">Order: {order.orderId}</p>
-                    <p className="font-bold text-[#4A2600]">{order.productName}</p>
-                    <p className="text-sm text-gray-600">Customer: {order.customerName}</p>
-                    <p className="text-xs text-gray-500">{order.pickupLabel} → {order.destinationLabel}</p>
+                  <div
+                    key={order.orderId}
+                    className="bg-white border border-orange-100 rounded-lg p-3 space-y-1"
+                  >
+                    <p className="text-xs text-gray-500">
+                      Order: {order.orderId}
+                    </p>
+                    <p className="font-bold text-[#4A2600]">
+                      {order.productName}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Customer: {order.customerName}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {order.pickupLabel} → {order.destinationLabel}
+                    </p>
                     <div className="flex items-center justify-between mt-2">
-                      <p className="font-black text-[#5D2611]">฿ {order.price.toFixed(2)}</p>
+                      <p className="font-black text-[#5D2611]">
+                        ฿ {order.price.toFixed(2)}
+                      </p>
                       <button
                         type="button"
                         onClick={() => acceptDeliveryOrder(order)}
                         disabled={acceptingOrderId === order.orderId}
                         className="px-3 py-1.5 rounded-md bg-[#A03F00] text-white text-xs font-black"
                       >
-                        {acceptingOrderId === order.orderId ? "Accepting..." : "Accept"}
+                        {acceptingOrderId === order.orderId
+                          ? "Accepting..."
+                          : "Accept"}
                       </button>
                     </div>
                   </div>
@@ -317,27 +387,46 @@ const MyJobsTab = ({
           </div>
 
           <div className="rounded-xl border border-orange-100 p-4 bg-orange-50/40">
-            <h4 className="font-black text-[#4A2600] mb-2">My Active Deliveries</h4>
+            <h4 className="font-black text-[#4A2600] mb-2">
+              My Active Deliveries
+            </h4>
             {myDeliveryOrders.length === 0 ? (
               <p className="text-sm text-gray-500">No active delivery jobs.</p>
             ) : (
               <div className="space-y-2">
                 {myDeliveryOrders.map((order) => (
-                  <div key={order.orderId} className="bg-white border border-orange-100 rounded-lg p-3 space-y-1">
-                    <p className="text-xs text-gray-500">Order: {order.orderId}</p>
-                    <p className="font-bold text-[#4A2600]">{order.productName}</p>
-                    <p className="text-sm text-gray-600">Customer: {order.customerName}</p>
-                    <p className="text-xs text-gray-500">Status: {order.status}</p>
-                    <p className="text-xs text-gray-500">{order.pickupLabel} → {order.destinationLabel}</p>
+                  <div
+                    key={order.orderId}
+                    className="bg-white border border-orange-100 rounded-lg p-3 space-y-1"
+                  >
+                    <p className="text-xs text-gray-500">
+                      Order: {order.orderId}
+                    </p>
+                    <p className="font-bold text-[#4A2600]">
+                      {order.productName}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Customer: {order.customerName}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Status: {order.status}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {order.pickupLabel} → {order.destinationLabel}
+                    </p>
                     <div className="flex items-center justify-between mt-2">
-                      <p className="font-black text-[#5D2611]">฿ {order.price.toFixed(2)}</p>
+                      <p className="font-black text-[#5D2611]">
+                        ฿ {order.price.toFixed(2)}
+                      </p>
                       <button
                         type="button"
                         onClick={() => completeDeliveryOrder(order)}
                         disabled={completingOrderId === order.orderId}
                         className="px-3 py-1.5 rounded-md bg-green-600 text-white text-xs font-black"
                       >
-                        {completingOrderId === order.orderId ? "Finishing..." : "Done Delivery"}
+                        {completingOrderId === order.orderId
+                          ? "Finishing..."
+                          : "Done Delivery"}
                       </button>
                     </div>
                   </div>
@@ -369,7 +458,7 @@ const MyJobsTab = ({
             />
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => setCategory(e.target.value as ServiceCategory)}
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
             >
               <option value="DELIVERY">DELIVERY</option>
@@ -390,18 +479,31 @@ const MyJobsTab = ({
             placeholder="Destination address"
           />
           <div className="space-y-2">
-            <p className="text-xs font-bold uppercase tracking-wider text-orange-700/70">Upload Service Image</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-orange-700/70">
+              Upload Service Image
+            </p>
             <label className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-orange-100 text-orange-700 font-black text-xs uppercase hover:bg-orange-200 cursor-pointer">
               Upload Image
-              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
             </label>
             {imageUrl && (
-              <img src={imageUrl} alt="Service preview" className="w-24 h-24 rounded-md object-cover border border-orange-100" />
+              <img
+                src={imageUrl}
+                alt="Service preview"
+                className="w-24 h-24 rounded-md object-cover border border-orange-100"
+              />
             )}
           </div>
 
           <div className="space-y-2 border border-orange-100 rounded-xl p-3 bg-orange-50/50">
-            <p className="text-xs font-bold uppercase tracking-wider text-orange-700/70">Select Location by Map</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-orange-700/70">
+              Select Location by Map
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -426,8 +528,13 @@ const MyJobsTab = ({
               </button>
             </div>
 
-            <div className={`rounded-md overflow-hidden border border-orange-200 relative ${mapExpanded ? "h-95" : "h-48"}`}>
-              <MapContainer bounds={mapLeafletBounds} className="w-full h-full z-0">
+            <div
+              className={`rounded-md overflow-hidden border border-orange-200 relative ${mapExpanded ? "h-95" : "h-48"}`}
+            >
+              <MapContainer
+                bounds={mapLeafletBounds}
+                className="w-full h-full z-0"
+              >
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                 <MapCenterTracker
                   onCenterChange={(lat, lng) => {
@@ -452,7 +559,9 @@ const MyJobsTab = ({
               disabled={resolvingAddress}
               className="px-3 py-1.5 rounded-md bg-[#A03F00] text-white font-black text-xs uppercase"
             >
-              {resolvingAddress ? "Resolving..." : `Use Pin for ${activeLocationField === "pickup" ? "Pickup" : "Destination"}`}
+              {resolvingAddress
+                ? "Resolving..."
+                : `Use Pin for ${activeLocationField === "pickup" ? "Pickup" : "Destination"}`}
             </button>
           </div>
 
@@ -464,8 +573,12 @@ const MyJobsTab = ({
             {creating ? "Creating..." : "Create Service"}
           </button>
         </form>
-        {error && <p className="text-sm text-red-600 font-semibold mt-3">{error}</p>}
-        {success && <p className="text-sm text-green-700 font-semibold mt-3">{success}</p>}
+        {error && (
+          <p className="text-sm text-red-600 font-semibold mt-3">{error}</p>
+        )}
+        {success && (
+          <p className="text-sm text-green-700 font-semibold mt-3">{success}</p>
+        )}
       </section>
 
       <section className="bg-white rounded-xl border border-orange-100 p-5 shadow-sm">
@@ -474,7 +587,12 @@ const MyJobsTab = ({
           <button
             type="button"
             onClick={repairMyServiceLinks}
-            disabled={repairingLinks || loadingServices || !currentUserId || services.length === 0}
+            disabled={
+              repairingLinks ||
+              loadingServices ||
+              !currentUserId ||
+              services.length === 0
+            }
             className="px-4 py-2 rounded-md bg-[#A03F00] text-white font-black text-xs uppercase disabled:bg-gray-300"
           >
             {repairingLinks ? "Repairing..." : "Repair Owner Links"}
@@ -487,13 +605,23 @@ const MyJobsTab = ({
         ) : (
           <div className="mt-3 space-y-2">
             {services.map((service) => (
-              <div key={String(service.service_id)} className="border border-gray-100 rounded-lg p-3 flex items-center justify-between text-sm">
+              <div
+                key={String(service.service_id)}
+                className="border border-gray-100 rounded-lg p-3 flex items-center justify-between text-sm"
+              >
                 <div>
                   <p className="font-bold text-[#4A2600]">{service.name}</p>
-                  <p className="text-gray-500">{service.category} • ฿{Number(service.price ?? 0).toFixed(2)}</p>
-                  <p className="text-xs text-gray-400">{service.pickup_address} → {service.dest_address}</p>
+                  <p className="text-gray-500">
+                    {service.category} • ฿
+                    {Number(service.price ?? 0).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {service.pickup_address} → {service.dest_address}
+                  </p>
                 </div>
-                <p className="text-xs text-gray-400">{String(service.service_id)}</p>
+                <p className="text-xs text-gray-400">
+                  {String(service.service_id)}
+                </p>
               </div>
             ))}
           </div>

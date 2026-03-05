@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import type { Service, PendingHireRoomView } from "@/types/service";
+
 import Loading from "@/components/shared/Loading";
+import type { PendingHireRoomView, Service } from "@/types/service";
 
 interface ServiceDetailViewProps {
   service: Service;
@@ -57,7 +58,7 @@ export function ServiceDetailView({
   declineHireRequest,
   decliningRequestRoomId,
   chatError,
-  requestError,
+  requestError
 }: ServiceDetailViewProps) {
   return (
     <div className="min-h-screen bg-[#F9E6D8] pt-24 pb-10">
@@ -85,8 +86,12 @@ export function ServiceDetailView({
               </p>
 
               <div className="space-y-2 text-sm text-gray-700 bg-gray-50 rounded-xl p-4 border border-gray-100">
-                {service.pickup_address && <p>• Pickup: {service.pickup_address}</p>}
-                {service.dest_address && <p>• Destination: {service.dest_address}</p>}
+                {service.pickup_address && (
+                  <p>• Pickup: {service.pickup_address}</p>
+                )}
+                {service.dest_address && (
+                  <p>• Destination: {service.dest_address}</p>
+                )}
                 {service.category && <p>• Category: {service.category}</p>}
               </div>
 
@@ -96,14 +101,27 @@ export function ServiceDetailView({
                 </p>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-orange-100 border border-orange-200 overflow-hidden flex items-center justify-center text-sm font-black text-[#4A2600]">
-                    {creator?.avatar_url || creator?.image_url || creator?.photo_url ? (
+                    {creator?.avatar_url ||
+                    creator?.image_url ||
+                    creator?.photo_url ? (
                       <img
-                        src={creator?.avatar_url || creator?.image_url || creator?.photo_url || ""}
-                        alt={creator?.full_name || creator?.email || "Freelance user"}
+                        src={
+                          creator?.avatar_url ||
+                          creator?.image_url ||
+                          creator?.photo_url ||
+                          ""
+                        }
+                        alt={
+                          creator?.full_name ||
+                          creator?.email ||
+                          "Freelance user"
+                        }
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      (creator?.full_name || creator?.email || "F").charAt(0).toUpperCase()
+                      (creator?.full_name || creator?.email || "F")
+                        .charAt(0)
+                        .toUpperCase()
                     )}
                   </div>
                   <div>
@@ -119,7 +137,9 @@ export function ServiceDetailView({
                 </div>
               </div>
 
-              <p className="text-5xl font-black text-[#111111]">$ {service.price}</p>
+              <p className="text-5xl font-black text-[#111111]">
+                $ {service.price}
+              </p>
 
               <div className="pt-2 flex flex-wrap gap-2 items-center">
                 {canOpenDeliverySessionChat && (
@@ -140,7 +160,9 @@ export function ServiceDetailView({
                     </p>
                     <textarea
                       value={hireRequestMessage}
-                      onChange={(event) => setHireRequestMessage(event.target.value)}
+                      onChange={(event) =>
+                        setHireRequestMessage(event.target.value)
+                      }
                       className="w-full border border-orange-200 rounded-xl px-3 py-2 text-sm bg-white min-h-[88px]"
                       placeholder="Write your request message to the freelancer"
                     />
@@ -151,10 +173,14 @@ export function ServiceDetailView({
                   <button
                     type="button"
                     onClick={sendHireRequest}
-                    disabled={sendingHireRequest || requestLoading || !canRequestHire}
+                    disabled={
+                      sendingHireRequest || requestLoading || !canRequestHire
+                    }
                     className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${sendingHireRequest || requestLoading || !canRequestHire ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
                   >
-                    {sendingHireRequest ? "Sending Request..." : "I Want to Hire This"}
+                    {sendingHireRequest
+                      ? "Sending Request..."
+                      : "I Want to Hire This"}
                   </button>
                 )}
 
@@ -179,16 +205,23 @@ export function ServiceDetailView({
                   </button>
                 )}
 
-                {canTryHire && isHireRequested && !hasPendingHire && !hasAcceptedHire && (
-                  <button
-                    type="button"
-                    onClick={sendHireRequest}
-                    disabled={sendingHireRequest || requestLoading || !canRequestHire}
-                    className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${sendingHireRequest || requestLoading || !canRequestHire ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
-                  >
-                    {sendingHireRequest ? "Sending Request..." : "Request Again"}
-                  </button>
-                )}
+                {canTryHire &&
+                  isHireRequested &&
+                  !hasPendingHire &&
+                  !hasAcceptedHire && (
+                    <button
+                      type="button"
+                      onClick={sendHireRequest}
+                      disabled={
+                        sendingHireRequest || requestLoading || !canRequestHire
+                      }
+                      className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${sendingHireRequest || requestLoading || !canRequestHire ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
+                    >
+                      {sendingHireRequest
+                        ? "Sending Request..."
+                        : "Request Again"}
+                    </button>
+                  )}
 
                 <Link
                   to="/service"
@@ -200,7 +233,8 @@ export function ServiceDetailView({
 
               {canTryHire && hasPendingHire && (
                 <p className="text-sm text-orange-700 font-semibold">
-                  Your request has been sent. The freelancer must accept before chat starts.
+                  Your request has been sent. The freelancer must accept before
+                  chat starts.
                 </p>
               )}
 
@@ -212,7 +246,8 @@ export function ServiceDetailView({
 
               {canTryHire && !canRequestHire && (
                 <p className="text-sm text-red-600 font-semibold">
-                  This service has no linked freelancer owner yet, so request cannot be sent.
+                  This service has no linked freelancer owner yet, so request
+                  cannot be sent.
                 </p>
               )}
 
@@ -225,7 +260,9 @@ export function ServiceDetailView({
                   {requestLoading && <Loading fullScreen={false} size={40} />}
 
                   {!requestLoading && pendingHireRequests.length === 0 && (
-                    <p className="text-sm text-gray-600">No pending requests right now.</p>
+                    <p className="text-sm text-gray-600">
+                      No pending requests right now.
+                    </p>
                   )}
 
                   {!requestLoading &&
@@ -265,7 +302,9 @@ export function ServiceDetailView({
                           }
                           className={`inline-flex px-4 py-1.5 rounded-lg text-white font-bold text-sm ${acceptingRequestRoomId === request.room_id ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
                         >
-                          {acceptingRequestRoomId === request.room_id ? "Accepting..." : "Accept"}
+                          {acceptingRequestRoomId === request.room_id
+                            ? "Accepting..."
+                            : "Accept"}
                         </button>
 
                         <button
@@ -277,16 +316,26 @@ export function ServiceDetailView({
                           }
                           className={`inline-flex px-4 py-1.5 rounded-lg text-white font-bold text-sm ${decliningRequestRoomId === request.room_id ? "bg-gray-300 cursor-not-allowed" : "bg-gray-600 hover:bg-gray-700"}`}
                         >
-                          {decliningRequestRoomId === request.room_id ? "Declining..." : "Decline"}
+                          {decliningRequestRoomId === request.room_id
+                            ? "Declining..."
+                            : "Decline"}
                         </button>
                       </div>
                     ))}
                 </div>
               )}
 
-              {chatError && <p className="text-sm text-red-600 font-semibold">{chatError}</p>}
+              {chatError && (
+                <p className="text-sm text-red-600 font-semibold">
+                  {chatError}
+                </p>
+              )}
 
-              {requestError && <p className="text-sm text-red-600 font-semibold">{requestError}</p>}
+              {requestError && (
+                <p className="text-sm text-red-600 font-semibold">
+                  {requestError}
+                </p>
+              )}
             </div>
           </div>
         </div>

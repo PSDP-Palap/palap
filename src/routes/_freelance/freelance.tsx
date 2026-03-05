@@ -39,13 +39,13 @@ function FreelanceManagementLayout() {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[#FCE6D5] pt-24 pb-10 font-sans">
-      <main className="max-w-6xl mx-auto px-4 space-y-4">
-        <section className="w-full bg-[#e9bc9a] rounded-2xl border border-orange-100 p-4 md:p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4 md:gap-6">
+    <div className="h-screen bg-[#FCE6D5] pt-24 pb-6 font-sans overflow-hidden">
+      <main className="max-w-6xl mx-auto px-4 h-full">
+        <section className="w-full h-full bg-[#e9bc9a] rounded-2xl border border-orange-100 p-4 md:p-6 flex flex-col min-h-0 overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4 md:gap-6 flex-1 min-h-0 overflow-hidden">
             {/* Sidebar Boxed inside the section */}
-            <aside className="space-y-3">
-              <div className="bg-white rounded-[26px] p-5 flex flex-col items-center shadow-sm border border-gray-100 relative">
+            <aside className="space-y-3 flex flex-col min-h-0 h-full">
+              <div className="bg-white rounded-[26px] p-5 flex flex-col items-center shadow-sm border border-gray-100 relative shrink-0">
                 <div className="w-20 h-20 rounded-full overflow-hidden border-[3px] border-[#8E3A19] mb-3 shadow-sm flex items-center justify-center bg-orange-100 text-2xl font-black text-[#5D2611]">
                   {String(displayName).charAt(0).toUpperCase()}
                 </div>
@@ -66,7 +66,7 @@ function FreelanceManagementLayout() {
                 </div>
               </div>
 
-              <nav className="flex flex-col gap-2">
+              <nav className="flex flex-col gap-2 overflow-y-auto pr-1">
                 {menuItems.map((item) => (
                   <Link
                     key={item.to}
@@ -75,9 +75,10 @@ function FreelanceManagementLayout() {
                       className: "bg-[#C04E21] text-white border-[#C04E21]"
                     }}
                     inactiveProps={{
-                      className: "bg-white text-gray-600 border-transparent hover:bg-orange-50"
+                      className:
+                        "bg-white text-gray-600 border-transparent hover:bg-orange-50"
                     }}
-                    className="py-2.5 px-6 rounded-2xl font-bold text-xs shadow-sm transition-all text-center border-2"
+                    className="py-2.5 px-6 rounded-2xl font-bold text-xs shadow-sm transition-all text-center border-2 shrink-0"
                   >
                     {item.label}
                   </Link>
@@ -85,8 +86,8 @@ function FreelanceManagementLayout() {
               </nav>
             </aside>
 
-            {/* Content Area */}
-            <section className="space-y-4 min-w-0">
+            {/* Content Area - Scrollable */}
+            <section className="space-y-4 min-w-0 h-full overflow-y-auto overscroll-behavior-none">
               <Outlet />
             </section>
           </div>

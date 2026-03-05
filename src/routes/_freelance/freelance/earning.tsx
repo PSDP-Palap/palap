@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+
+import EarningTab from "@/components/freelance/EarningTab";
 import { useUserStore } from "@/stores/useUserStore";
 import supabase from "@/utils/supabase";
-import EarningTab from "@/components/freelance/tabs/EarningTab";
 
 export const Route = createFileRoute("/_freelance/freelance/earning")({
   component: EarningRoute
@@ -26,7 +27,7 @@ function EarningRoute() {
       const { data: earnings } = await supabase
         .from("freelance_earnings")
         .select("*")
-        .eq("freelancer_id", currentUserId);
+        .eq("freelance_id", currentUserId);
       const total = (earnings || []).reduce(
         (sum, e) => sum + Number(e.amount || 0),
         0

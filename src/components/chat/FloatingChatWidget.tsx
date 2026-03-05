@@ -673,7 +673,7 @@ const FloatingChatWidget = () => {
   return (
     <div
       ref={rootRef}
-      className={`fixed right-4 md:right-6 z-60 transition-all duration-300 ${
+      className={`fixed right-4 mb-2 md:right-6 z-60 transition-all duration-300 ${
         isCheckoutFooterPage ? "bottom-41 md:bottom-22" : "bottom-20"
       }`}
     >
@@ -775,17 +775,11 @@ const FloatingChatWidget = () => {
         </div>
       )}
 
-      <button
-        onClick={() => setOpen(!open)}
-        className={`w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 ${
-          open
-            ? "bg-white text-orange-500 rotate-90"
-            : "bg-[#FF914D] text-white"
-        }`}
-      >
-        {open ? (
-          <X className="w-7 h-7 md:w-8 md:h-8" />
-        ) : (
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          className="w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 bg-[#FF914D] text-white"
+        >
           <div className="relative">
             <MessageCircle className="w-7 h-7 md:w-8 md:h-8 fill-current" />
             {hasUnreadConversations && (
@@ -794,8 +788,8 @@ const FloatingChatWidget = () => {
               </span>
             )}
           </div>
-        )}
-      </button>
+        </button>
+      )}
     </div>
   );
 };
