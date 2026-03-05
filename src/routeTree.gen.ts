@@ -28,6 +28,7 @@ import { Route as AuthenticatedFreelanceSignUpRouteImport } from './routes/_auth
 import { Route as AuthenticatedEditProfileRouteImport } from './routes/_authenticated/edit-profile'
 import { Route as AuthenticatedCheckoutRouteImport } from './routes/_authenticated/checkout'
 import { Route as AdminAdminRouteImport } from './routes/_admin/admin'
+import { Route as AuthenticatedOrderHistoryOrderIdRouteImport } from './routes/_authenticated/order-history/$orderId'
 import { Route as AuthenticatedChatIdRouteImport } from './routes/_authenticated/chat/$id'
 
 const GuestRoute = GuestRouteImport.update({
@@ -124,6 +125,12 @@ const AdminAdminRoute = AdminAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AdminRoute,
 } as any)
+const AuthenticatedOrderHistoryOrderIdRoute =
+  AuthenticatedOrderHistoryOrderIdRouteImport.update({
+    id: '/order-history/$orderId',
+    path: '/order-history/$orderId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedChatIdRoute = AuthenticatedChatIdRouteImport.update({
   id: '/chat/$id',
   path: '/chat/$id',
@@ -147,6 +154,7 @@ export interface FileRoutesByFullPath {
   '/product/': typeof ProductIndexRoute
   '/service/': typeof ServiceIndexRoute
   '/chat/$id': typeof AuthenticatedChatIdRoute
+  '/order-history/$orderId': typeof AuthenticatedOrderHistoryOrderIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -165,6 +173,7 @@ export interface FileRoutesByTo {
   '/product': typeof ProductIndexRoute
   '/service': typeof ServiceIndexRoute
   '/chat/$id': typeof AuthenticatedChatIdRoute
+  '/order-history/$orderId': typeof AuthenticatedOrderHistoryOrderIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -188,6 +197,7 @@ export interface FileRoutesById {
   '/product/': typeof ProductIndexRoute
   '/service/': typeof ServiceIndexRoute
   '/_authenticated/chat/$id': typeof AuthenticatedChatIdRoute
+  '/_authenticated/order-history/$orderId': typeof AuthenticatedOrderHistoryOrderIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -208,6 +218,7 @@ export interface FileRouteTypes {
     | '/product/'
     | '/service/'
     | '/chat/$id'
+    | '/order-history/$orderId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -226,6 +237,7 @@ export interface FileRouteTypes {
     | '/product'
     | '/service'
     | '/chat/$id'
+    | '/order-history/$orderId'
   id:
     | '__root__'
     | '/'
@@ -248,6 +260,7 @@ export interface FileRouteTypes {
     | '/product/'
     | '/service/'
     | '/_authenticated/chat/$id'
+    | '/_authenticated/order-history/$orderId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -397,6 +410,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAdminRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/_authenticated/order-history/$orderId': {
+      id: '/_authenticated/order-history/$orderId'
+      path: '/order-history/$orderId'
+      fullPath: '/order-history/$orderId'
+      preLoaderRoute: typeof AuthenticatedOrderHistoryOrderIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/chat/$id': {
       id: '/_authenticated/chat/$id'
       path: '/chat/$id'
@@ -425,6 +445,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPaymentRoute: typeof AuthenticatedPaymentRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedChatIdRoute: typeof AuthenticatedChatIdRoute
+  AuthenticatedOrderHistoryOrderIdRoute: typeof AuthenticatedOrderHistoryOrderIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -435,6 +456,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedPaymentRoute: AuthenticatedPaymentRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedChatIdRoute: AuthenticatedChatIdRoute,
+  AuthenticatedOrderHistoryOrderIdRoute: AuthenticatedOrderHistoryOrderIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

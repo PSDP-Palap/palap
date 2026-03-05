@@ -32,6 +32,7 @@ export interface PendingHireRequestItem {
   customerId: string;
   customerName: string;
   serviceName: string;
+  requestMessage: string;
   requestedAt: string;
 }
 

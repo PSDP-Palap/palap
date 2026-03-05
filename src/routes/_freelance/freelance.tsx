@@ -1,6 +1,6 @@
 import "leaflet/dist/leaflet.css";
 
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { type ChangeEvent, useEffect, useState } from "react";
 import { MapContainer, TileLayer, useMapEvents } from "react-leaflet";
 
@@ -80,6 +80,7 @@ function MapCenterTracker({ onCenterChange }: MapCenterTrackerProps) {
 }
 
 function RouteComponent() {
+  const router = useRouter();
   const { profile, session } = useUserStore();
   const currentUserId = profile?.id || session?.user?.id || null;
   const displayName = profile?.full_name || session?.user?.email || "Freelance";
@@ -136,6 +137,10 @@ function RouteComponent() {
     []
   );
   const [loadingDeliveryOrders, setLoadingDeliveryOrders] = useState(false);
+  const [refreshingJobBoard, setRefreshingJobBoard] = useState(false);
+  const [jobBoardLastUpdatedAt, setJobBoardLastUpdatedAt] = useState<
+    string | null
+  >(null);
   const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
   const [completingOrderId, setCompletingOrderId] = useState<string | null>(
     null
@@ -376,7 +381,8 @@ function RouteComponent() {
     }));
   };
 
-  const loadDeliveryOrders = async () => {
+  const loadDeliveryOrders = async (options?: { background?: boolean }) => {
+    const isBackground = options?.background ?? false;
     if (!currentUserId) {
       setAvailableDeliveryOrders([]);
       setMyDeliveryOrders([]);
@@ -384,7 +390,9 @@ function RouteComponent() {
     }
 
     try {
-      setLoadingDeliveryOrders(true);
+      if (!isBackground) {
+        setLoadingDeliveryOrders(true);
+      }
 
       const [availableResult, mineResult] = await Promise.all([
         supabase
@@ -451,13 +459,33 @@ function RouteComponent() {
       setAvailableDeliveryOrders([]);
       setMyDeliveryOrders([]);
     } finally {
-      setLoadingDeliveryOrders(false);
+      if (!isBackground) {
+        setLoadingDeliveryOrders(false);
+      }
     }
   };
 
   useEffect(() => {
     loadDeliveryOrders();
   }, [currentUserId, ordersRealtimeVersion, closedDeliverySessionOrderIds]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const timer = window.setInterval(() => {
+      Promise.all([
+        loadDeliveryOrders({ background: true }),
+        loadPendingHireRequests({ background: true }),
+        loadOngoingServiceJobs({ background: true })
+      ]).then(() => {
+        setJobBoardLastUpdatedAt(new Date().toISOString());
+      });
+    }, 8000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [currentUserId, closedDeliverySessionOrderIds]);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -625,7 +653,41 @@ function RouteComponent() {
           });
         }
 
-        await supabase.from("chat_messages").insert(messages);
+        for (const messagePayload of messages) {
+          const payloadCandidates = [
+            messagePayload,
+            {
+              room_id: messagePayload.room_id,
+              order_id: messagePayload.order_id,
+              sender_id: messagePayload.sender_id,
+              message: messagePayload.message
+            }
+          ];
+
+          let inserted = false;
+          let lastInsertError: any = null;
+
+          for (const payload of payloadCandidates) {
+            const { error } = await supabase
+              .from("chat_messages")
+              .insert([payload]);
+
+            if (!error) {
+              inserted = true;
+              break;
+            }
+
+            lastInsertError = error;
+            if (!isColumnMissingError(error)) {
+              break;
+            }
+          }
+
+          if (!inserted && lastInsertError) {
+            throw lastInsertError;
+          }
+        }
+
         await supabase
           .from("chat_rooms")
           .update({ last_message_at: new Date().toISOString() })
@@ -652,6 +714,50 @@ function RouteComponent() {
       const nowIso = new Date().toISOString();
       let completed = false;
       let lastCompleteError: any = null;
+
+      let assignedFreelancerId = "";
+      const { data: ownershipFreelanceRow, error: ownershipFreelanceError } =
+        await supabase
+          .from("orders")
+          .select("order_id, freelance_id")
+          .eq("order_id", order.orderId)
+          .maybeSingle();
+
+      if (!ownershipFreelanceError) {
+        assignedFreelancerId = String(
+          (ownershipFreelanceRow as any)?.freelance_id || ""
+        );
+      } else if (!isColumnMissingError(ownershipFreelanceError)) {
+        throw ownershipFreelanceError;
+      }
+
+      if (!assignedFreelancerId) {
+        const {
+          data: ownershipFreelancerRow,
+          error: ownershipFreelancerError
+        } = await supabase
+          .from("orders")
+          .select("order_id, freelancer_id")
+          .eq("order_id", order.orderId)
+          .maybeSingle();
+
+        if (!ownershipFreelancerError) {
+          assignedFreelancerId = String(
+            (ownershipFreelancerRow as any)?.freelancer_id || ""
+          );
+        } else if (!isColumnMissingError(ownershipFreelancerError)) {
+          throw ownershipFreelancerError;
+        }
+      }
+
+      if (!assignedFreelancerId) {
+        throw new Error("This order has no assigned freelancer yet.");
+      }
+
+      if (assignedFreelancerId !== String(currentUserId)) {
+        throw new Error("You are not assigned to this order.");
+      }
+
       const completionCandidates = Array.from(
         new Set([
           ...ORDER_COMPLETE_STATUS_CANDIDATES,
@@ -661,18 +767,106 @@ function RouteComponent() {
       );
 
       for (const statusCandidate of completionCandidates) {
-        const { error: completeError } = await supabase
+        const { data: updatedRow, error: completeError } = await supabase
           .from("orders")
           .update({
             status: statusCandidate,
             updated_at: nowIso
           })
           .eq("order_id", order.orderId)
-          .eq("freelance_id", currentUserId);
+          .eq("freelance_id", currentUserId)
+          .select("order_id")
+          .maybeSingle();
 
-        if (!completeError) {
+        if (!completeError && updatedRow?.order_id) {
           completed = true;
           break;
+        }
+
+        if (!completeError && !updatedRow?.order_id) {
+          const { data: updatedAnyRow, error: fallbackOwnerColumnError } =
+            await supabase
+              .from("orders")
+              .update({
+                status: statusCandidate,
+                updated_at: nowIso
+              })
+              .eq("order_id", order.orderId)
+              .eq("freelancer_id", currentUserId)
+              .select("order_id")
+              .maybeSingle();
+
+          if (!fallbackOwnerColumnError && updatedAnyRow?.order_id) {
+            completed = true;
+            break;
+          }
+
+          if (fallbackOwnerColumnError) {
+            if (isInvalidEnumValueError(fallbackOwnerColumnError)) {
+              lastCompleteError = fallbackOwnerColumnError;
+              continue;
+            }
+            throw fallbackOwnerColumnError;
+          }
+
+          continue;
+        }
+
+        if (completeError && isColumnMissingError(completeError)) {
+          const { data: altStatusRow, error: altStatusError } = await supabase
+            .from("orders")
+            .update({
+              order_status: statusCandidate,
+              updated_at: nowIso
+            })
+            .eq("order_id", order.orderId)
+            .eq("freelance_id", currentUserId)
+            .select("order_id")
+            .maybeSingle();
+
+          if (!altStatusError && altStatusRow?.order_id) {
+            completed = true;
+            break;
+          }
+
+          if (!altStatusError && !altStatusRow?.order_id) {
+            const { data: altOwnerStatusRow, error: altOwnerStatusError } =
+              await supabase
+                .from("orders")
+                .update({
+                  order_status: statusCandidate,
+                  updated_at: nowIso
+                })
+                .eq("order_id", order.orderId)
+                .eq("freelancer_id", currentUserId)
+                .select("order_id")
+                .maybeSingle();
+
+            if (!altOwnerStatusError && altOwnerStatusRow?.order_id) {
+              completed = true;
+              break;
+            }
+
+            if (altOwnerStatusError && !isColumnMissingError(altOwnerStatusError)) {
+              if (isInvalidEnumValueError(altOwnerStatusError)) {
+                lastCompleteError = altOwnerStatusError;
+                continue;
+              }
+              throw altOwnerStatusError;
+            }
+
+            continue;
+          }
+
+          if (altStatusError && !isColumnMissingError(altStatusError)) {
+            if (isInvalidEnumValueError(altStatusError)) {
+              lastCompleteError = altStatusError;
+              continue;
+            }
+            throw altStatusError;
+          }
+
+          continue;
         }
 
         if (isInvalidEnumValueError(completeError)) {
@@ -688,7 +882,29 @@ function RouteComponent() {
           .from("orders")
           .update({ updated_at: nowIso })
           .eq("order_id", order.orderId)
-          .eq("freelance_id", currentUserId);
+          .eq("freelance_id", currentUserId)
+          .select("order_id")
+          .maybeSingle();
+
+        if (!fallbackComplete.error && !fallbackComplete.data?.order_id) {
+          const fallbackAltOwnerComplete = await supabase
+            .from("orders")
+            .update({ updated_at: nowIso })
+            .eq("order_id", order.orderId)
+            .eq("freelancer_id", currentUserId)
+            .select("order_id")
+            .maybeSingle();
+
+          if (!fallbackAltOwnerComplete.error && fallbackAltOwnerComplete.data?.order_id) {
+            completed = true;
+          } else if (fallbackAltOwnerComplete.error) {
+            throw new Error(
+              lastCompleteError?.message ||
+                fallbackAltOwnerComplete.error.message ||
+                "Unable to complete delivery order."
+            );
+          }
+        }
 
         if (fallbackComplete.error) {
           throw new Error(
@@ -697,7 +913,13 @@ function RouteComponent() {
               "Unable to complete delivery order."
           );
         }
+
+        if (fallbackComplete.data?.order_id) {
+          completed = true;
+        }
       }
+
+      const ensuredRoom = await ensureDeliveryChatRoom(order);
 
       const { data: roomMarkerRows } = await supabase
         .from("chat_messages")
@@ -715,7 +937,7 @@ function RouteComponent() {
         )
       );
 
-      const { data: orderRoomRows } = await supabase
+      const { data: orderRoomFreelancerRows } = await supabase
         .from("chat_rooms")
         .select("id")
         .eq("order_id", order.orderId)
@@ -723,25 +945,69 @@ function RouteComponent() {
         .eq("freelancer_id", currentUserId)
         .limit(10);
 
+      const { data: orderRoomFreelanceRows } = await supabase
+        .from("chat_rooms")
+        .select("id")
+        .eq("order_id", order.orderId)
+        .eq("customer_id", order.customerId)
+        .eq("freelance_id", currentUserId)
+        .limit(10);
+
       const roomIds = Array.from(
         new Set([
+          ...(ensuredRoom.roomId ? [String(ensuredRoom.roomId)] : []),
           ...markerRoomIds,
-          ...(orderRoomRows ?? [])
+          ...(orderRoomFreelancerRows ?? [])
+            .map((row: any) => String(row.id || ""))
+            .filter(Boolean),
+          ...(orderRoomFreelanceRows ?? [])
             .map((row: any) => String(row.id || ""))
             .filter(Boolean)
         ])
       );
 
       if (roomIds.length > 0) {
-        const doneMessages = roomIds.map((roomId) => ({
-          room_id: roomId,
-          order_id: order.orderId,
-          sender_id: currentUserId,
-          receiver_id: order.customerId,
-          message: `${DELIVERY_DONE_PREFIX} ORDER:${order.orderId} Delivery completed.`
-        }));
+        const doneMessageText = `${DELIVERY_DONE_PREFIX} ORDER:${order.orderId} Delivery completed.`;
+        const doneMessages = roomIds.map((roomId) => [
+          {
+            room_id: roomId,
+            order_id: order.orderId,
+            sender_id: currentUserId,
+            receiver_id: order.customerId,
+            message: doneMessageText
+          },
+          {
+            room_id: roomId,
+            order_id: order.orderId,
+            sender_id: currentUserId,
+            receiver_id: order.customerId,
+            message: doneMessageText
+          },
+          {
+            room_id: roomId,
+            order_id: order.orderId,
+            sender_id: currentUserId,
+            message: doneMessageText
+          }
+        ]);
 
-        await supabase.from("chat_messages").insert(doneMessages);
+        for (const payloadCandidates of doneMessages) {
+          let inserted = false;
+          let lastInsertError: any = null;
+          for (const payload of payloadCandidates) {
+            const { error } = await supabase
+              .from("chat_messages")
+              .insert([payload]);
+            if (!error) {
+              inserted = true;
+              break;
+            }
+            lastInsertError = error;
+          }
+          if (!inserted && lastInsertError) {
+            throw lastInsertError;
+          }
+        }
 
         await supabase
           .from("chat_rooms")
@@ -759,6 +1025,9 @@ function RouteComponent() {
         `Completed order ${order.orderId}. Chat stays available until deleted manually.`
       );
       await loadDeliveryOrders();
+      window.setTimeout(() => {
+        router.navigate({ to: "/" });
+      }, 900);
     } catch (err: any) {
       setError(err?.message || "Unable to complete delivery order.");
     } finally {
@@ -774,18 +1043,40 @@ function RouteComponent() {
       setError(null);
       setSuccess(null);
 
-      const { error: insertError } = await supabase
-        .from("chat_messages")
-        .insert([
-          {
-            room_id: request.roomId,
-            order_id: request.serviceId,
-            sender_id: currentUserId,
-            receiver_id: request.customerId,
-            message:
-              "[SYSTEM_HIRE_ACCEPTED] Hire request accepted. You can now start chat."
-          }
-        ]);
+      const systemMessage =
+        "[SYSTEM_HIRE_ACCEPTED] Hire request accepted. You can now start chat.";
+
+      const requestOrderId = String(request.serviceId || "");
+      if (!requestOrderId) {
+        throw new Error("Missing order id for this hire request.");
+      }
+
+      // Keep insert resilient while preserving required order_id.
+      let insertError: any = null;
+      const insertPayloadCandidates = [
+        {
+          room_id: request.roomId,
+          order_id: requestOrderId,
+          sender_id: currentUserId,
+          receiver_id: request.customerId || null,
+          message: systemMessage
+        },
+        {
+          room_id: request.roomId,
+          order_id: requestOrderId,
+          sender_id: currentUserId,
+          message: systemMessage
+        }
+      ];
+
+      for (const payload of insertPayloadCandidates) {
+        const { error } = await supabase.from("chat_messages").insert([payload]);
+        if (!error) {
+          insertError = null;
+          break;
+        }
+        insertError = error;
+      }
 
       if (insertError) throw insertError;
 
@@ -809,46 +1100,42 @@ function RouteComponent() {
     }
   };
 
-  useEffect(() => {
-    const loadPendingHireRequests = async () => {
-      if (!currentUserId) {
+  const loadPendingHireRequests = async (options?: { background?: boolean }) => {
+    const isBackground = options?.background ?? false;
+
+    if (!currentUserId) {
+      setPendingHireRequests([]);
+      return;
+    }
+
+    try {
+      if (!isBackground) {
+        setLoadingPendingHireRequests(true);
+      }
+
+      const { data: roomRows, error: roomError } = await supabase
+        .from("chat_rooms")
+        .select("id, order_id, customer_id, freelancer_id, last_message_at")
+        .eq("freelancer_id", currentUserId)
+        .order("last_message_at", { ascending: false })
+        .limit(100);
+
+      if (roomError || !roomRows || roomRows.length === 0) {
         setPendingHireRequests([]);
         return;
       }
 
-      try {
-        setLoadingPendingHireRequests(true);
+      const rooms = roomRows as any[];
+      const roomIds = rooms.map((row) => String(row.id));
+      const customerIds = Array.from(
+        new Set(rooms.map((row) => String(row.customer_id || "")).filter(Boolean))
+      );
+      const orderIds = Array.from(
+        new Set(rooms.map((row) => String(row.order_id || "")).filter(Boolean))
+      );
 
-        const { data: roomRows, error: roomError } = await supabase
-          .from("chat_rooms")
-          .select("id, order_id, customer_id, freelancer_id, last_message_at")
-          .eq("freelancer_id", currentUserId)
-          .order("last_message_at", { ascending: false })
-          .limit(100);
-
-        if (roomError || !roomRows || roomRows.length === 0) {
-          setPendingHireRequests([]);
-          return;
-        }
-
-        const rooms = roomRows as any[];
-        const roomIds = rooms.map((row) => String(row.id));
-        const customerIds = Array.from(
-          new Set(
-            rooms.map((row) => String(row.customer_id || "")).filter(Boolean)
-          )
-        );
-        const orderIds = Array.from(
-          new Set(
-            rooms.map((row) => String(row.order_id || "")).filter(Boolean)
-          )
-        );
-
-        const [
-          { data: messageRows },
-          { data: customerRows },
-          { data: serviceRows }
-        ] = await Promise.all([
+      const [{ data: messageRows }, { data: customerRows }, { data: serviceRows }] =
+        await Promise.all([
           roomIds.length > 0
             ? supabase
                 .from("chat_messages")
@@ -870,109 +1157,107 @@ function RouteComponent() {
             : Promise.resolve({ data: [] as any[] })
         ]);
 
-        const customerMap = new Map(
-          (customerRows ?? []).map((row: any) => [
-            String(row.id),
-            row.full_name || row.email || "Customer"
-          ])
-        );
-        const serviceMap = new Map(
-          (serviceRows ?? []).map((row: any) => [
-            String(row.service_id),
-            row.name || "Service"
-          ])
-        );
+      const customerMap = new Map(
+        (customerRows ?? []).map((row: any) => [
+          String(row.id),
+          row.full_name || row.email || "Customer"
+        ])
+      );
+      const serviceMap = new Map(
+        (serviceRows ?? []).map((row: any) => [
+          String(row.service_id),
+          row.name || "Service"
+        ])
+      );
 
-        const roomMessagesMap = new Map<string, any[]>();
-        (messageRows ?? []).forEach((row: any) => {
-          const key = String(row.room_id);
-          const current = roomMessagesMap.get(key) || [];
-          current.push(row);
-          roomMessagesMap.set(key, current);
-        });
+      const roomMessagesMap = new Map<string, any[]>();
+      (messageRows ?? []).forEach((row: any) => {
+        const key = String(row.room_id);
+        const current = roomMessagesMap.get(key) || [];
+        current.push(row);
+        roomMessagesMap.set(key, current);
+      });
 
-        const pendingRows: PendingHireRequestItem[] = rooms
-          .map((room: any) => {
-            const roomId = String(room.id);
-            const rows = roomMessagesMap.get(roomId) || [];
-            const hasRequest = rows.some((row: any) =>
-              String(row.message || "").startsWith("[SYSTEM_HIRE_REQUEST]")
-            );
-            const hasAccepted = rows.some((row: any) =>
-              String(row.message || "").startsWith("[SYSTEM_HIRE_ACCEPTED]")
-            );
-            if (!hasRequest || hasAccepted) return null;
+      const pendingRows: PendingHireRequestItem[] = rooms
+        .map((room: any) => {
+          const roomId = String(room.id);
+          const rows = roomMessagesMap.get(roomId) || [];
+          const hasRequest = rows.some((row: any) =>
+            String(row.message || "").startsWith("[SYSTEM_HIRE_REQUEST]")
+          );
+          const hasAccepted = rows.some((row: any) =>
+            String(row.message || "").startsWith("[SYSTEM_HIRE_ACCEPTED]")
+          );
+          if (!hasRequest || hasAccepted) return null;
 
-            const firstRequest = rows.find((row: any) =>
-              String(row.message || "").startsWith("[SYSTEM_HIRE_REQUEST]")
-            );
+          const firstRequest = rows.find((row: any) =>
+            String(row.message || "").startsWith("[SYSTEM_HIRE_REQUEST]")
+          );
+          const requestMessage = String(firstRequest?.message || "")
+            .replace("[SYSTEM_HIRE_REQUEST]", "")
+            .trim();
 
-            return {
-              roomId,
-              serviceId: String(room.order_id || ""),
-              customerId: String(room.customer_id || ""),
-              customerName:
-                customerMap.get(String(room.customer_id || "")) || "Customer",
-              serviceName:
-                serviceMap.get(String(room.order_id || "")) || "Service",
-              requestedAt: String(
-                firstRequest?.created_at || room.last_message_at || ""
-              )
-            };
-          })
-          .filter(Boolean) as PendingHireRequestItem[];
+          return {
+            roomId,
+            serviceId: String(room.order_id || ""),
+            customerId: String(room.customer_id || ""),
+            customerName:
+              customerMap.get(String(room.customer_id || "")) || "Customer",
+            serviceName: serviceMap.get(String(room.order_id || "")) || "Service",
+            requestMessage: requestMessage || "Customer sent a hire request.",
+            requestedAt: String(
+              firstRequest?.created_at || room.last_message_at || ""
+            )
+          };
+        })
+        .filter(Boolean) as PendingHireRequestItem[];
 
-        setPendingHireRequests(pendingRows);
-      } catch {
-        setPendingHireRequests([]);
-      } finally {
+      setPendingHireRequests(pendingRows);
+    } catch {
+      setPendingHireRequests([]);
+    } finally {
+      if (!isBackground) {
         setLoadingPendingHireRequests(false);
       }
-    };
+    }
+  };
 
-    loadPendingHireRequests();
-  }, [currentUserId, chatsRealtimeVersion]);
+  const loadOngoingServiceJobs = async (options?: { background?: boolean }) => {
+    const isBackground = options?.background ?? false;
 
-  useEffect(() => {
-    const loadOngoingServiceJobs = async () => {
-      if (!currentUserId) {
+    if (!currentUserId) {
+      setOngoingServiceJobs([]);
+      return;
+    }
+
+    try {
+      if (!isBackground) {
+        setLoadingOngoingServiceJobs(true);
+      }
+
+      const { data: roomRows, error: roomError } = await supabase
+        .from("chat_rooms")
+        .select("id, order_id, customer_id, freelancer_id, last_message_at")
+        .eq("freelancer_id", currentUserId)
+        .order("last_message_at", { ascending: false })
+        .limit(200);
+
+      if (roomError || !roomRows || roomRows.length === 0) {
         setOngoingServiceJobs([]);
         return;
       }
 
-      try {
-        setLoadingOngoingServiceJobs(true);
+      const rooms = roomRows as any[];
+      const roomIds = rooms.map((row) => String(row.id));
+      const customerIds = Array.from(
+        new Set(rooms.map((row) => String(row.customer_id || "")).filter(Boolean))
+      );
+      const orderIds = Array.from(
+        new Set(rooms.map((row) => String(row.order_id || "")).filter(Boolean))
+      );
 
-        const { data: roomRows, error: roomError } = await supabase
-          .from("chat_rooms")
-          .select("id, order_id, customer_id, freelancer_id, last_message_at")
-          .eq("freelancer_id", currentUserId)
-          .order("last_message_at", { ascending: false })
-          .limit(200);
-
-        if (roomError || !roomRows || roomRows.length === 0) {
-          setOngoingServiceJobs([]);
-          return;
-        }
-
-        const rooms = roomRows as any[];
-        const roomIds = rooms.map((row) => String(row.id));
-        const customerIds = Array.from(
-          new Set(
-            rooms.map((row) => String(row.customer_id || "")).filter(Boolean)
-          )
-        );
-        const orderIds = Array.from(
-          new Set(
-            rooms.map((row) => String(row.order_id || "")).filter(Boolean)
-          )
-        );
-
-        const [
-          { data: messageRows },
-          { data: customerRows },
-          { data: serviceRows }
-        ] = await Promise.all([
+      const [{ data: messageRows }, { data: customerRows }, { data: serviceRows }] =
+        await Promise.all([
           roomIds.length > 0
             ? supabase
                 .from("chat_messages")
@@ -994,80 +1279,101 @@ function RouteComponent() {
             : Promise.resolve({ data: [] as any[] })
         ]);
 
-        const customerMap = new Map(
-          (customerRows ?? []).map((row: any) => [
-            String(row.id),
-            row.full_name || row.email || "Customer"
-          ])
-        );
-        const serviceMap = new Map(
-          (serviceRows ?? []).map((row: any) => [String(row.service_id), row])
-        );
+      const customerMap = new Map(
+        (customerRows ?? []).map((row: any) => [
+          String(row.id),
+          row.full_name || row.email || "Customer"
+        ])
+      );
+      const serviceMap = new Map(
+        (serviceRows ?? []).map((row: any) => [String(row.service_id), row])
+      );
 
-        const roomMessagesMap = new Map<string, any[]>();
-        (messageRows ?? []).forEach((row: any) => {
-          const key = String(row.room_id);
-          const current = roomMessagesMap.get(key) || [];
-          current.push(row);
-          roomMessagesMap.set(key, current);
-        });
+      const roomMessagesMap = new Map<string, any[]>();
+      (messageRows ?? []).forEach((row: any) => {
+        const key = String(row.room_id);
+        const current = roomMessagesMap.get(key) || [];
+        current.push(row);
+        roomMessagesMap.set(key, current);
+      });
 
-        const mappedOngoing: OngoingServiceJobItem[] = rooms
-          .map((room: any) => {
-            const roomId = String(room.id);
-            const rows = roomMessagesMap.get(roomId) || [];
-            const hasRequest = rows.some((row: any) =>
-              String(row.message || "").startsWith("[SYSTEM_HIRE_REQUEST]")
+      const mappedOngoing: OngoingServiceJobItem[] = rooms
+        .map((room: any) => {
+          const roomId = String(room.id);
+          const rows = roomMessagesMap.get(roomId) || [];
+          const hasRequest = rows.some((row: any) =>
+            String(row.message || "").startsWith("[SYSTEM_HIRE_REQUEST]")
+          );
+          const acceptedMessage = rows.find((row: any) => {
+            const message = String(row.message || "");
+            return (
+              message.startsWith("[SYSTEM_HIRE_ACCEPTED]") ||
+              message.startsWith("[SYSTEM_DELIVERY_ORDER_ACCEPTED]")
             );
-            const acceptedMessage = rows.find((row: any) => {
-              const message = String(row.message || "");
-              return (
-                message.startsWith("[SYSTEM_HIRE_ACCEPTED]") ||
-                message.startsWith("[SYSTEM_DELIVERY_ORDER_ACCEPTED]")
-              );
-            });
-            const hasDone = rows.some((row: any) =>
-              String(row.message || "").startsWith("[SYSTEM_DELIVERY_DONE]")
-            );
+          });
+          const hasDone = rows.some((row: any) =>
+            String(row.message || "").startsWith("[SYSTEM_DELIVERY_DONE]")
+          );
 
-            if (hasRequest && !acceptedMessage) return null;
-            if (hasDone) return null;
+          if (hasRequest && !acceptedMessage) return null;
+          if (hasDone) return null;
 
-            const serviceId = String(room.order_id || "");
-            const serviceRow = serviceMap.get(serviceId) as any;
-            const category = String(serviceRow?.category || "").toUpperCase();
-            if (category === "DELIVERY_SESSION") return null;
+          const serviceId = String(room.order_id || "");
+          const serviceRow = serviceMap.get(serviceId) as any;
+          const category = String(serviceRow?.category || "").toUpperCase();
+          if (category === "DELIVERY_SESSION") return null;
 
-            return {
-              roomId,
-              serviceId,
-              customerId: String(room.customer_id || ""),
-              customerName:
-                customerMap.get(String(room.customer_id || "")) || "Customer",
-              serviceName: String(serviceRow?.name || "Service"),
-              acceptedAt: String(
-                acceptedMessage?.created_at || room.last_message_at || ""
-              ),
-              lastAt: String(
-                room.last_message_at || acceptedMessage?.created_at || ""
-              ),
-              price: Number(serviceRow?.price || 0)
-            };
-          })
-          .filter(Boolean)
-          .sort(
-            (a: any, b: any) =>
-              new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()
-          ) as OngoingServiceJobItem[];
+          return {
+            roomId,
+            serviceId,
+            customerId: String(room.customer_id || ""),
+            customerName:
+              customerMap.get(String(room.customer_id || "")) || "Customer",
+            serviceName: String(serviceRow?.name || "Service"),
+            acceptedAt: String(
+              acceptedMessage?.created_at || room.last_message_at || ""
+            ),
+            lastAt: String(
+              room.last_message_at || acceptedMessage?.created_at || ""
+            ),
+            price: Number(serviceRow?.price || 0)
+          };
+        })
+        .filter(Boolean)
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()
+        ) as OngoingServiceJobItem[];
 
-        setOngoingServiceJobs(mappedOngoing);
-      } catch {
-        setOngoingServiceJobs([]);
-      } finally {
+      setOngoingServiceJobs(mappedOngoing);
+    } catch {
+      setOngoingServiceJobs([]);
+    } finally {
+      if (!isBackground) {
         setLoadingOngoingServiceJobs(false);
       }
-    };
+    }
+  };
 
+  const refreshJobBoard = async () => {
+    try {
+      setRefreshingJobBoard(true);
+      await Promise.all([
+        loadPendingHireRequests(),
+        loadOngoingServiceJobs(),
+        loadDeliveryOrders()
+      ]);
+      setJobBoardLastUpdatedAt(new Date().toISOString());
+    } finally {
+      setRefreshingJobBoard(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPendingHireRequests();
+  }, [currentUserId, chatsRealtimeVersion]);
+
+  useEffect(() => {
     loadOngoingServiceJobs();
   }, [currentUserId, chatsRealtimeVersion]);
 
@@ -1096,10 +1402,13 @@ function RouteComponent() {
         const rooms = roomRows as any[];
         const roomIds = rooms.map((row) => String(row.id));
         const customerIds = Array.from(
-          new Set(rooms.map((row) => String(row.customer_id)))
+          new Set(
+            rooms.map((row) => String(row.customer_id || "")).filter(Boolean)
+          )
         );
+        // chat_rooms stores the linked service id in order_id for service chat flows.
         const serviceIds = Array.from(
-          new Set(rooms.map((row) => String(row.service_id)))
+          new Set(rooms.map((row) => String(row.order_id || "")).filter(Boolean))
         );
 
         const { data: messageRows } = await supabase
@@ -1195,11 +1504,11 @@ function RouteComponent() {
 
             return {
               roomId,
-              serviceId: String(room.service_id),
+              serviceId: String(room.order_id || ""),
               customerId,
               customerName: customer?.name || "Customer",
               customerAvatarUrl: customer?.avatar || null,
-              serviceName: serviceMap.get(String(room.service_id)) || "Service",
+              serviceName: serviceMap.get(String(room.order_id || "")) || "Service",
               lastMessage: latest?.message || "No message yet",
               lastAt: latest?.createdAt || String(room.last_message_at || "")
             };
@@ -1653,132 +1962,157 @@ function RouteComponent() {
                     </p>
                   </div>
 
-                  <section className="bg-white rounded-xl border border-orange-100 p-5 shadow-sm space-y-3">
+                  <section className="bg-white rounded-xl border border-orange-100 p-5 shadow-sm space-y-4">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-xl font-black text-[#4A2600]">
-                        Pending Hire Requests
+                        Service Job Board
                       </h3>
-                      <span className="px-2 py-1 rounded-full bg-orange-100 text-[#A03F00] text-xs font-black">
-                        {pendingHireRequests.length}
-                      </span>
+                      <div className="text-right">
+                        <button
+                          type="button"
+                          onClick={refreshJobBoard}
+                          disabled={
+                            refreshingJobBoard ||
+                            loadingDeliveryOrders ||
+                            loadingPendingHireRequests ||
+                            loadingOngoingServiceJobs
+                          }
+                          className="px-3 py-1.5 rounded-md text-xs font-black bg-orange-100 text-[#A03F00] disabled:bg-gray-100 disabled:text-gray-400"
+                        >
+                          {refreshingJobBoard ? "Refreshing..." : "Refresh"}
+                        </button>
+                        <p className="mt-1 text-[10px] text-gray-500">
+                          Last updated:{" "}
+                          {jobBoardLastUpdatedAt
+                            ? new Date(jobBoardLastUpdatedAt).toLocaleTimeString()
+                            : "-"}
+                        </p>
+                      </div>
                     </div>
 
-                    {loadingPendingHireRequests ? (
-                      <p className="text-sm text-gray-500">
-                        Loading pending requests...
-                      </p>
-                    ) : pendingHireRequests.length === 0 ? (
-                      <p className="text-sm text-gray-500">
-                        No pending hire requests right now.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {pendingHireRequests.map((request) => (
-                          <div
-                            key={request.roomId}
-                            className="bg-orange-50/50 border border-orange-100 rounded-lg p-3 flex items-center justify-between gap-3"
-                          >
-                            <div className="min-w-0">
-                              <p className="font-bold text-[#4A2600] truncate">
-                                {request.customerName}
-                              </p>
-                              <p className="text-xs text-orange-700 truncate">
-                                {request.serviceName}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Requested:{" "}
-                                {request.requestedAt
-                                  ? new Date(
-                                      request.requestedAt
-                                    ).toLocaleString()
-                                  : "-"}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => acceptHireRequest(request)}
-                                disabled={
-                                  acceptingHireRoomId === request.roomId
-                                }
-                                className="px-3 py-1.5 rounded-md bg-green-600 text-white text-xs font-black disabled:bg-gray-300"
-                              >
-                                {acceptingHireRoomId === request.roomId
-                                  ? "Accepting..."
-                                  : "Accept Request"}
-                              </button>
-                              <Link
-                                to="/service/$id"
-                                params={{ id: request.serviceId }}
-                                hash={`chat:${encodeURIComponent(request.roomId)}`}
-                                className="px-3 py-1.5 rounded-md bg-[#A03F00] text-white text-xs font-black"
-                              >
-                                Open Chat
-                              </Link>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </section>
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                      <div className="rounded-xl border border-orange-100 p-4 bg-orange-50/40">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <h4 className="font-black text-[#4A2600]">
+                            Pending Hire Requests
+                          </h4>
+                          <span className="px-2 py-1 rounded-full bg-orange-100 text-[#A03F00] text-xs font-black">
+                            {pendingHireRequests.length}
+                          </span>
+                        </div>
 
-                  <section className="bg-white rounded-xl border border-orange-100 p-5 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-xl font-black text-[#4A2600]">
-                        Ongoing Jobs
-                      </h3>
-                      <span className="px-2 py-1 rounded-full bg-orange-100 text-[#A03F00] text-xs font-black">
-                        {ongoingServiceJobs.length}
-                      </span>
+                        {loadingPendingHireRequests ? (
+                          <p className="text-sm text-gray-500">
+                            Loading pending requests...
+                          </p>
+                        ) : pendingHireRequests.length === 0 ? (
+                          <p className="text-sm text-gray-500">
+                            No pending hire requests right now.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {pendingHireRequests.map((request) => (
+                              <div
+                                key={request.roomId}
+                                className="bg-white border border-orange-100 rounded-lg p-3 space-y-1"
+                              >
+                                <p className="font-bold text-[#4A2600] truncate">
+                                  {request.customerName}
+                                </p>
+                                <p className="text-xs text-orange-700 truncate">
+                                  {request.serviceName}
+                                </p>
+                                <div className="rounded-md border border-orange-100 bg-orange-50 px-2.5 py-2 mt-1">
+                                  <p className="text-[11px] font-bold uppercase tracking-wide text-orange-700/80 mb-1">
+                                    Customer Message
+                                  </p>
+                                  <p className="text-xs text-[#5D2611] leading-relaxed break-words">
+                                    {request.requestMessage}
+                                  </p>
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                  Requested:{" "}
+                                  {request.requestedAt
+                                    ? new Date(request.requestedAt).toLocaleString()
+                                    : "-"}
+                                </p>
+                                <div className="flex items-center justify-end gap-2 mt-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => acceptHireRequest(request)}
+                                    disabled={acceptingHireRoomId === request.roomId}
+                                    className="px-3 py-1.5 rounded-md bg-green-600 text-white text-xs font-black disabled:bg-gray-300"
+                                  >
+                                    {acceptingHireRoomId === request.roomId
+                                      ? "Accepting..."
+                                      : "Accept Request"}
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-gray-500 text-right">
+                                  Accept request to unlock chat with this user.
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-orange-100 p-4 bg-orange-50/40">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <h4 className="font-black text-[#4A2600]">
+                            Ongoing Service Jobs
+                          </h4>
+                          <span className="px-2 py-1 rounded-full bg-orange-100 text-[#A03F00] text-xs font-black">
+                            {ongoingServiceJobs.length}
+                          </span>
+                        </div>
+
+                        {loadingOngoingServiceJobs ? (
+                          <p className="text-sm text-gray-500">
+                            Loading ongoing jobs...
+                          </p>
+                        ) : ongoingServiceJobs.length === 0 ? (
+                          <p className="text-sm text-gray-500">
+                            No ongoing jobs yet. Accept a hire request to start one.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {ongoingServiceJobs.map((job) => (
+                              <div
+                                key={job.roomId}
+                                className="bg-white border border-orange-100 rounded-lg p-3 space-y-1"
+                              >
+                                <p className="font-bold text-[#4A2600] truncate">
+                                  {job.serviceName}
+                                </p>
+                                <p className="text-xs text-orange-700 truncate">
+                                  Customer: {job.customerName}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Accepted:{" "}
+                                  {job.acceptedAt
+                                    ? new Date(job.acceptedAt).toLocaleString()
+                                    : "-"}
+                                </p>
+                                <div className="flex items-center justify-between mt-2">
+                                  <p className="font-black text-[#5D2611]">
+                                    ฿ {job.price.toFixed(2)}
+                                  </p>
+                                  <Link
+                                    to="/service/$id"
+                                    params={{ id: job.serviceId }}
+                                    hash={`chat:${encodeURIComponent(job.roomId)}`}
+                                    className="px-3 py-1.5 rounded-md bg-[#A03F00] text-white text-xs font-black"
+                                  >
+                                    Open Chat
+                                  </Link>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-
-                    {loadingOngoingServiceJobs ? (
-                      <p className="text-sm text-gray-500">
-                        Loading ongoing jobs...
-                      </p>
-                    ) : ongoingServiceJobs.length === 0 ? (
-                      <p className="text-sm text-gray-500">
-                        No ongoing jobs yet. Accept a hire request to start one.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {ongoingServiceJobs.map((job) => (
-                          <div
-                            key={job.roomId}
-                            className="bg-orange-50/50 border border-orange-100 rounded-lg p-3 flex items-center justify-between gap-3"
-                          >
-                            <div className="min-w-0">
-                              <p className="font-bold text-[#4A2600] truncate">
-                                {job.serviceName}
-                              </p>
-                              <p className="text-xs text-orange-700 truncate">
-                                Customer: {job.customerName}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Accepted:{" "}
-                                {job.acceptedAt
-                                  ? new Date(job.acceptedAt).toLocaleString()
-                                  : "-"}
-                              </p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-xs text-gray-500">Price</p>
-                              <p className="font-black text-[#5D2611]">
-                                ฿ {job.price.toFixed(2)}
-                              </p>
-                              <Link
-                                to="/service/$id"
-                                params={{ id: job.serviceId }}
-                                hash={`chat:${encodeURIComponent(job.roomId)}`}
-                                className="inline-block mt-1 px-3 py-1.5 rounded-md bg-[#A03F00] text-white text-xs font-black"
-                              >
-                                Open Chat
-                              </Link>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </section>
 
                   <section className="bg-white rounded-xl border border-orange-100 p-5 shadow-sm space-y-4">
@@ -1786,14 +2120,6 @@ function RouteComponent() {
                       <h3 className="text-xl font-black text-[#4A2600]">
                         Delivery Job Board
                       </h3>
-                      <button
-                        type="button"
-                        onClick={loadDeliveryOrders}
-                        disabled={loadingDeliveryOrders}
-                        className="px-3 py-1.5 rounded-md text-xs font-black bg-orange-100 text-[#A03F00] disabled:bg-gray-100 disabled:text-gray-400"
-                      >
-                        {loadingDeliveryOrders ? "Refreshing..." : "Refresh"}
-                      </button>
                     </div>
 
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">

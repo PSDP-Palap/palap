@@ -16,6 +16,7 @@ const Navbar = () => {
 
   const isLoggedIn = !!session;
   const displayName = profile?.full_name || session?.user?.email || null;
+  const isFreelancer = String(profile?.role || "").toLowerCase() === "freelance";
 
   return (
     <nav className="fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl bg-white rounded-full drop-shadow-xl z-[100] pointer-events-auto">
@@ -26,7 +27,11 @@ const Navbar = () => {
         </div>
         <ul className="flex gap-6 items-center">
           <li className="font-semibold hover:text-orange-500 transition-colors">
-            <Link to="/">HOME</Link>
+            {isFreelancer ? (
+              <Link to="/freelance">DASHBOARD</Link>
+            ) : (
+              <Link to="/">HOME</Link>
+            )}
           </li>
           <li className="font-semibold hover:text-orange-500 transition-colors">
             <Link to="/product">PRODUCT</Link>

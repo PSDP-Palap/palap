@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useUserStore } from "@/stores/useUserStore";
 import type { DeliveryTracking } from "@/types/payment";
-import { isCompletedOrderStatus } from "@/utils/helpers";
+import { getOrderIdFromSystemMessage, isCompletedOrderStatus } from "@/utils/helpers";
 import supabase, { isUuidLike } from "@/utils/supabase";
 
 const WAITING_STATUS_SET = new Set([
@@ -18,6 +18,7 @@ const WAITING_STATUS_SET = new Set([
   "requested",
   "looking_freelancer"
 ]);
+const DELIVERY_DONE_PREFIX = "[SYSTEM_DELIVERY_DONE]";
 
 function GlobalOrderTrackingWidget() {
   const router = useRouter();
@@ -31,7 +32,9 @@ function GlobalOrderTrackingWidget() {
   const userId = useUserStore(
     (s) => s.profile?.id || s.session?.user?.id || null
   );
+  const userRole = useUserStore((s) => s.profile?.role || null);
   const isInitialized = useUserStore((s) => s.isInitialized);
+  const isCustomer = String(userRole || "").toLowerCase() === "customer";
 
   const { activeOrderId, setActiveOrderId } = useOrderStore();
 
@@ -39,12 +42,12 @@ function GlobalOrderTrackingWidget() {
   const [tracking, setTracking] = useState<DeliveryTracking | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [searchOrderId, setSearchOrderId] = useState("");
 
   const isFetchingOngoingRef = useRef(false);
   const isFetchingTrackingRef = useRef<string | null>(null);
   const lastOngoingFetchTimeRef = useRef(0);
   const lastLoadedOrderIdRef = useRef<string | null>(null);
+  const suppressAutoPickRef = useRef(false);
 
   const isPaymentConfirmPage = pathname === "/payment";
   const isCheckoutFooterPage =
@@ -91,6 +94,23 @@ function GlobalOrderTrackingWidget() {
           return null;
         }
 
+        const { data: doneRows } = await supabase
+          .from("chat_messages")
+          .select("order_id, message")
+          .like("message", `${DELIVERY_DONE_PREFIX} ORDER:%`)
+          .order("created_at", { ascending: false })
+          .limit(500);
+
+        const doneOrderSet = new Set(
+          ((doneRows as any[]) ?? [])
+            .map((row: any) => {
+              const directId = String(row?.order_id || "").trim();
+              if (directId) return directId;
+              return getOrderIdFromSystemMessage(String(row?.message || ""));
+            })
+            .filter(Boolean)
+        );
+
         const excludedSet = new Set(
           excludedOrderIds.map((value) => String(value))
         );
@@ -98,6 +118,7 @@ function GlobalOrderTrackingWidget() {
           const rowOrderId = String(row?.order_id || "");
           if (!rowOrderId) return false;
           if (excludedSet.has(rowOrderId)) return false;
+          if (doneOrderSet.has(rowOrderId)) return false;
 
           const isFinished = isCompletedOrderStatus(String(row?.status || ""));
           if (isFinished) {
@@ -221,27 +242,35 @@ function GlobalOrderTrackingWidget() {
                 .maybeSingle()
             : { data: null as any };
 
+        const { data: doneMarkerRow } = await supabase
+          .from("chat_messages")
+          .select("id")
+          .eq("order_id", orderId)
+          .like("message", "[SYSTEM_DELIVERY_DONE] ORDER:%")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
         const addressMap = new Map(
           (addressRows ?? []).map((row: any) => [String(row.id), row])
         );
         const rawStatus = String(orderRow.status || "").toLowerCase();
         const isAssigned = !!freelanceId;
+        const hasDoneMarker = !!doneMarkerRow;
 
-        // Use ONLY database status to determine if the order is completed
+        // Prefer DB status, but treat delivery-done system markers as completed fallback.
         const nextStatus =
-          isAssigned && WAITING_STATUS_SET.has(rawStatus)
+          hasDoneMarker || isCompletedOrderStatus(rawStatus)
+            ? "delivered"
+            : isAssigned && WAITING_STATUS_SET.has(rawStatus)
             ? "serving"
             : rawStatus || (isAssigned ? "serving" : "waiting");
 
         if (isCompletedOrderStatus(nextStatus)) {
-          const nextOngoingList = await getOngoingOrderIds([orderId]);
-          if (nextOngoingList && nextOngoingList.length > 0) {
-            useOrderStore.getState().setActiveOrderId(nextOngoingList[0]);
-          } else {
-            useOrderStore.getState().setActiveOrderId(null);
-            setTracking(null);
-            setOpen(false);
-          }
+          suppressAutoPickRef.current = true;
+          useOrderStore.getState().setActiveOrderId(null);
+          setTracking(null);
+          setOpen(false);
           return;
         }
 
@@ -293,8 +322,11 @@ function GlobalOrderTrackingWidget() {
   );
 
   useEffect(() => {
+    if (isPaymentConfirmPage) return;
+    if (!isCustomer) return;
     if (!userId || !isInitialized) return;
     if (activeOrderId) return;
+    if (suppressAutoPickRef.current) return;
 
     let active = true;
     const boot = async () => {
@@ -311,6 +343,8 @@ function GlobalOrderTrackingWidget() {
       active = false;
     };
   }, [
+    isPaymentConfirmPage,
+    isCustomer,
     userId,
     isInitialized,
     activeOrderId,
@@ -319,6 +353,8 @@ function GlobalOrderTrackingWidget() {
   ]);
 
   useEffect(() => {
+    if (isPaymentConfirmPage) return;
+    if (!isCustomer) return;
     if (!activeOrderId) {
       setTracking(null);
       lastLoadedOrderIdRef.current = null;
@@ -353,7 +389,24 @@ function GlobalOrderTrackingWidget() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeOrderId, loadTracking]);
+  }, [isPaymentConfirmPage, isCustomer, activeOrderId, loadTracking]);
+
+  useEffect(() => {
+    if (isPaymentConfirmPage) return;
+    if (!isCustomer) return;
+    if (!userId || !isInitialized) return;
+
+    const timer = window.setInterval(() => {
+      if (activeOrderId) {
+        loadTracking(activeOrderId, { background: true });
+      }
+      getOngoingOrderIds();
+    }, 8000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isPaymentConfirmPage, isCustomer, userId, isInitialized, activeOrderId, loadTracking, getOngoingOrderIds]);
 
   const handleOpenChat = async () => {
     const targetOrderId = tracking?.orderId || activeOrderId;
@@ -410,7 +463,28 @@ function GlobalOrderTrackingWidget() {
     }
   };
 
-  if (!isInitialized || !userId || isActiveChatPage || isPaymentConfirmPage) {
+  const handleTrackNextOngoingOrder = async () => {
+    try {
+      setLoading(true);
+      suppressAutoPickRef.current = false;
+
+      const nextOrderIds = await getOngoingOrderIds();
+      const nextOrderId = nextOrderIds?.[0] || ongoingOrderIds[0] || null;
+
+      if (!nextOrderId) {
+        toast("No ongoing orders to track right now.");
+        return;
+      }
+
+      setActiveOrderId(nextOrderId);
+      setOpen(true);
+      await loadTracking(nextOrderId);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isInitialized || !userId || !isCustomer || isActiveChatPage || isPaymentConfirmPage) {
     return null;
   }
 
@@ -420,9 +494,6 @@ function GlobalOrderTrackingWidget() {
     ? !tracking.freelanceId ||
       WAITING_STATUS_SET.has(String(tracking.status || "").toLowerCase())
     : true;
-  const filteredOrderIds = ongoingOrderIds.filter((id) =>
-    id.toLowerCase().includes(searchOrderId.trim().toLowerCase())
-  );
 
   return (
     <aside
@@ -470,6 +541,14 @@ function GlobalOrderTrackingWidget() {
                 <p className="text-sm font-bold text-orange-700">
                   Waiting for order information...
                 </p>
+                <button
+                  type="button"
+                  onClick={handleTrackNextOngoingOrder}
+                  disabled={loading || ongoingOrderIds.length === 0}
+                  className="mt-3 px-3 py-2 rounded-lg bg-[#A03F00] text-white text-xs font-black disabled:bg-gray-300"
+                >
+                  {loading ? "Checking..." : "Track next ongoing order"}
+                </button>
               </div>
             ) : (
               <>
@@ -521,22 +600,21 @@ function GlobalOrderTrackingWidget() {
             )}
 
             <div className="rounded-lg border border-orange-200 bg-white p-3 text-xs space-y-2">
-              <p className="text-[10px] font-black uppercase tracking-wider text-orange-700/70">
-                Ongoing Orders
-              </p>
-              <input
-                value={searchOrderId}
-                onChange={(e) => setSearchOrderId(e.target.value)}
-                placeholder="Search order id"
-                className="w-full border border-orange-200 rounded-md px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-orange-300"
-              />
-              <div className="max-h-28 overflow-y-auto space-y-1">
-                {filteredOrderIds.length === 0 ? (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-orange-700/70">
+                  Ongoing Orders
+                </p>
+                <span className="px-2 py-0.5 rounded-full bg-orange-100 text-[10px] font-black text-[#A03F00]">
+                  {ongoingOrderIds.length}
+                </span>
+              </div>
+              <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                {ongoingOrderIds.length === 0 ? (
                   <p className="text-gray-500 italic">
-                    No matching ongoing order.
+                    No ongoing orders right now.
                   </p>
                 ) : (
-                  filteredOrderIds.map((id) => (
+                  ongoingOrderIds.map((id) => (
                     <button
                       key={id}
                       type="button"
@@ -551,9 +629,27 @@ function GlobalOrderTrackingWidget() {
                   ))
                 )}
               </div>
+              {ongoingOrderIds.length > 4 && (
+                <p className="text-[10px] text-gray-500">
+                  Scroll to see more active orders.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  router.navigate({
+                    to: "/payment",
+                    hash: "#order-history"
+                  });
+                  setOpen(false);
+                }}
+                className="flex-1 px-3 py-2 rounded-lg bg-orange-100 text-[#A03F00] text-xs font-black hover:bg-orange-200 transition-colors"
+              >
+                Order History
+              </button>
               <button
                 type="button"
                 onClick={() => {

@@ -54,6 +54,7 @@ export const cleanPreviewMessage = (message: string | null | undefined): string 
   return message
     .replace("[SYSTEM_HIRE_REQUEST]", "")
     .replace("[SYSTEM_HIRE_ACCEPTED]", "")
+    .replace("[SYSTEM_HIRE_DECLINED]", "")
     .replace("[SYSTEM_DELIVERY_ORDER_ACCEPTED]", "")
     .replace("[SYSTEM_DELIVERY_ROOM_CREATED]", "")
     .replace("[SYSTEM_DELIVERY_DONE]", "")
@@ -65,6 +66,7 @@ export const isSystemMessage = (message: string | null | undefined): boolean => 
   return (
     message.startsWith("[SYSTEM_HIRE_REQUEST]") ||
     message.startsWith("[SYSTEM_HIRE_ACCEPTED]") ||
+    message.startsWith("[SYSTEM_HIRE_DECLINED]") ||
     message.startsWith("[SYSTEM_DELIVERY_ORDER_ACCEPTED]") ||
     message.startsWith("[SYSTEM_DELIVERY_ROOM_CREATED]") ||
     message.startsWith("[SYSTEM_DELIVERY_DONE]")

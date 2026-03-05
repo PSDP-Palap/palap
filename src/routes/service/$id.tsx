@@ -22,6 +22,7 @@ const DEFAULT_HIRE_MESSAGE =
   "Hi, I want to hire this service. Could you share more details before we proceed?";
 const SYSTEM_REQUEST_PREFIX = "[SYSTEM_HIRE_REQUEST]";
 const SYSTEM_ACCEPT_PREFIX = "[SYSTEM_HIRE_ACCEPTED]";
+const SYSTEM_DECLINE_PREFIX = "[SYSTEM_HIRE_DECLINED]";
 const CHAT_IMAGE_PREFIX = "[CHAT_IMAGE]";
 
 const getRoleValue = (value: any) => {
@@ -39,10 +40,13 @@ const toSystemRequestMessage = (text: string) =>
   `${SYSTEM_REQUEST_PREFIX} ${text}`;
 const toSystemAcceptMessage = (text: string) =>
   `${SYSTEM_ACCEPT_PREFIX} ${text}`;
+const toSystemDeclineMessage = (text: string) =>
+  `${SYSTEM_DECLINE_PREFIX} ${text}`;
 const stripSystemPrefix = (message: string | null | undefined) =>
   (message || "")
     .replace(SYSTEM_REQUEST_PREFIX, "")
     .replace(SYSTEM_ACCEPT_PREFIX, "")
+    .replace(SYSTEM_DECLINE_PREFIX, "")
     .trim();
 const toImageMessage = (url: string) => `${CHAT_IMAGE_PREFIX} ${url}`;
 const isImageMessage = (message: string | null | undefined) =>
@@ -52,6 +56,33 @@ const isUuidLike = (value: string | null | undefined) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   );
+
+const deriveHireStateFromMessages = (rows: any[]) => {
+  let nextState: "idle" | "requested" | "accepted" = "idle";
+  let requestMessage = "";
+
+  for (const row of rows || []) {
+    const message = String(row?.message || "");
+    if (message.startsWith(SYSTEM_REQUEST_PREFIX)) {
+      nextState = "requested";
+      requestMessage = stripSystemPrefix(message);
+      continue;
+    }
+    if (message.startsWith(SYSTEM_ACCEPT_PREFIX)) {
+      nextState = "accepted";
+      continue;
+    }
+    if (message.startsWith(SYSTEM_DECLINE_PREFIX)) {
+      nextState = "idle";
+    }
+  }
+
+  return {
+    requested: nextState !== "idle",
+    accepted: nextState === "accepted",
+    requestMessage
+  };
+};
 
 function RouteComponent() {
   const { id } = Route.useParams();
@@ -143,11 +174,13 @@ function RouteComponent() {
   const hasAcceptedHire = isHireAccepted;
   const hasPendingHire = isHireRequested && !isHireAccepted;
 
-  useEffect(() => {
-    const loadService = async () => {
+  const loadService = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
       try {
-        setLoading(true);
-        setError(null);
+        if (!silent) {
+          setLoading(true);
+          setError(null);
+        }
 
         const { data: serviceData, error: serviceError } = await withTimeout(
           supabase
@@ -183,15 +216,26 @@ function RouteComponent() {
             setCreator(profileData);
           }
         }
-      } catch (err: any) {
-        setError(err.message || "Failed to load service");
-      } finally {
-        setLoading(false);
-      }
-    };
 
+        if (silent) {
+          setError(null);
+        }
+      } catch (err: any) {
+        if (!silent) {
+          setError(err.message || "Failed to load service");
+        }
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [id]
+  );
+
+  useEffect(() => {
     loadService();
-  }, [id]);
+  }, [loadService]);
 
   const getParticipantPair = useCallback(() => {
     if (!activeRoomParticipants) return null;
@@ -316,84 +360,206 @@ function RouteComponent() {
     [currentUserId, creatorId, id]
   );
 
-  const loadHireRequestData = useCallback(async () => {
+  const loadHireRequestData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!currentUserId || !creatorId) return;
 
     try {
-      setRequestLoading(true);
+      if (!silent) {
+        setRequestLoading(true);
+      }
+
       if (isServiceOwner) {
-        const { data, error: reqError } = await withTimeout(
+        const { data: rooms, error: roomsError } = await withTimeout(
           supabase
             .from("chat_rooms")
-            .select(
-              "id, customer_id, freelancer_id, hire_status, hire_request_message"
-            )
+            .select("id, customer_id, freelancer_id")
             .eq("order_id", id)
             .eq("freelancer_id", currentUserId)
-            .eq("hire_status", "requested")
         );
 
-        if (reqError) throw reqError;
+        if (roomsError) throw roomsError;
 
-        if (data && data.length > 0) {
-          const customers = data.map((r) => r.customer_id).filter(Boolean);
-          const { data: profiles, error: pError } = await withTimeout(
-            supabase
-              .from("profiles")
-              .select("id, full_name, avatar_url")
-              .in("id", customers)
-          );
-
-          if (pError) throw pError;
-
-          const pMap = new Map((profiles || []).map((p) => [p.id, p]));
-          const views: PendingHireRoomView[] = data.map((r) => {
-            const p = pMap.get(r.customer_id);
-            return {
-              room_id: r.id,
-              customer_id: r.customer_id,
-              customer_name: p?.full_name || "Customer",
-              customer_avatar_url: p?.avatar_url || null,
-              request_message: r.hire_request_message || ""
-            };
-          });
-          setPendingHireRequests(views);
-        } else {
+        if (!rooms || rooms.length === 0) {
           setPendingHireRequests([]);
+          return;
         }
-      } else {
-        const { data: myReq, error: myReqError } = await withTimeout(
-          supabase
-            .from("chat_rooms")
-            .select("hire_status, hire_request_message")
-            .eq("order_id", id)
-            .eq("customer_id", currentUserId)
-            .eq("freelancer_id", creatorId)
-            .maybeSingle()
-        );
 
-        if (myReqError) throw myReqError;
-        if (myReq) {
-          setIsHireRequested(
-            myReq.hire_status === "requested" ||
-              myReq.hire_status === "accepted"
-          );
-          setIsHireAccepted(myReq.hire_status === "accepted");
-        } else {
-          setIsHireRequested(false);
-          setIsHireAccepted(false);
-        }
+        const roomIds = rooms.map((r: any) => String(r.id)).filter(Boolean);
+        const customers = rooms
+          .map((r: any) => String(r.customer_id || ""))
+          .filter(Boolean);
+
+        const [{ data: profiles, error: pError }, { data: messageRows }] =
+          await Promise.all([
+            withTimeout(
+              supabase
+                .from("profiles")
+                .select("id, full_name, avatar_url")
+                .in("id", customers)
+            ),
+            roomIds.length > 0
+              ? withTimeout(
+                  supabase
+                    .from("chat_messages")
+                    .select("room_id, message, created_at")
+                    .in("room_id", roomIds)
+                    .order("created_at", { ascending: true })
+                )
+              : Promise.resolve({ data: [] as any[] })
+          ]);
+
+        if (pError) throw pError;
+
+        const pMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+        const byRoom = new Map<string, any[]>();
+        (messageRows || []).forEach((row: any) => {
+          const key = String(row.room_id || "");
+          const current = byRoom.get(key) || [];
+          current.push(row);
+          byRoom.set(key, current);
+        });
+
+        const views: PendingHireRoomView[] = (rooms as any[])
+          .map((room: any) => {
+            const roomId = String(room.id || "");
+            const roomMessages = byRoom.get(roomId) || [];
+            const state = deriveHireStateFromMessages(roomMessages);
+            if (!state.requested || state.accepted) return null;
+
+            const customerId = String(room.customer_id || "");
+            const profile = pMap.get(customerId);
+
+            return {
+              room_id: roomId,
+              customer_id: customerId,
+              customer_name: profile?.full_name || "Customer",
+              customer_avatar_url: profile?.avatar_url || null,
+              request_message: state.requestMessage || DEFAULT_HIRE_MESSAGE
+            };
+          })
+          .filter(Boolean) as PendingHireRoomView[];
+
+        setPendingHireRequests(views);
+        return;
       }
+
+      const { data: myRoom, error: myRoomError } = await withTimeout(
+        supabase
+          .from("chat_rooms")
+          .select("id")
+          .eq("order_id", id)
+          .eq("customer_id", currentUserId)
+          .eq("freelancer_id", creatorId)
+          .maybeSingle()
+      );
+
+      if (myRoomError) throw myRoomError;
+
+      if (!myRoom?.id) {
+        setIsHireRequested(false);
+        setIsHireAccepted(false);
+        return;
+      }
+
+      const { data: myMessages, error: myMsgError } = await withTimeout(
+        supabase
+          .from("chat_messages")
+          .select("message, created_at")
+          .eq("room_id", String(myRoom.id))
+          .order("created_at", { ascending: true })
+      );
+
+      if (myMsgError) throw myMsgError;
+
+      const state = deriveHireStateFromMessages(myMessages || []);
+      setIsHireRequested(state.requested);
+      setIsHireAccepted(state.accepted);
     } catch (e) {
       console.error("Load hire data error", e);
     } finally {
-      setRequestLoading(false);
+      if (!silent) {
+        setRequestLoading(false);
+      }
     }
   }, [currentUserId, creatorId, id, isServiceOwner]);
 
   useEffect(() => {
     loadHireRequestData();
   }, [loadHireRequestData]);
+
+  useEffect(() => {
+    const refreshSilently = () => {
+      loadService({ silent: true });
+      loadHireRequestData({ silent: true });
+    };
+
+    const intervalId = window.setInterval(refreshSilently, 5000);
+    const onFocusRefresh = () => refreshSilently();
+    const onVisibilityRefresh = () => {
+      if (document.visibilityState === "visible") {
+        refreshSilently();
+      }
+    };
+
+    window.addEventListener("focus", onFocusRefresh);
+    document.addEventListener("visibilitychange", onVisibilityRefresh);
+
+    const serviceChannel = supabase
+      .channel(`service_detail_${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "services"
+        },
+        (payload) => {
+          const nextServiceId = String((payload.new as any)?.service_id || "");
+          const prevServiceId = String((payload.old as any)?.service_id || "");
+          if (nextServiceId === String(id) || prevServiceId === String(id)) {
+            refreshSilently();
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_messages"
+        },
+        (payload) => {
+          const nextOrderId = String((payload.new as any)?.order_id || "");
+          const prevOrderId = String((payload.old as any)?.order_id || "");
+          if (nextOrderId === String(id) || prevOrderId === String(id)) {
+            loadHireRequestData({ silent: true });
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_rooms"
+        },
+        (payload) => {
+          const nextOrderId = String((payload.new as any)?.order_id || "");
+          const prevOrderId = String((payload.old as any)?.order_id || "");
+          if (nextOrderId === String(id) || prevOrderId === String(id)) {
+            loadHireRequestData({ silent: true });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocusRefresh);
+      document.removeEventListener("visibilitychange", onVisibilityRefresh);
+      supabase.removeChannel(serviceChannel);
+    };
+  }, [id, loadHireRequestData, loadService]);
 
   const sendHireRequest = async () => {
     if (!currentUserId || !creatorId) return;
@@ -404,18 +570,6 @@ function RouteComponent() {
 
       const rId = await resolveChatRoom(true);
       if (!rId) throw new Error("Could not initialize chat room for request");
-
-      const { error: updateError } = await withTimeout(
-        supabase
-          .from("chat_rooms")
-          .update({
-            hire_status: "requested",
-            hire_request_message: hireRequestMessage
-          })
-          .eq("id", rId)
-      );
-
-      if (updateError) throw updateError;
 
       const systemMsg = toSystemRequestMessage(
         hireRequestMessage || DEFAULT_HIRE_MESSAGE
@@ -441,14 +595,6 @@ function RouteComponent() {
   const acceptHireRequest = async (request: PendingHireRoomView) => {
     try {
       setAcceptingRequestRoomId(request.room_id);
-      const { error: acceptErr } = await withTimeout(
-        supabase
-          .from("chat_rooms")
-          .update({ hire_status: "accepted" })
-          .eq("id", request.room_id)
-      );
-
-      if (acceptErr) throw acceptErr;
 
       const systemMsg = toSystemAcceptMessage(
         "Freelancer accepted your hire request. You can now chat!"
@@ -475,11 +621,17 @@ function RouteComponent() {
   const declineHireRequest = async (request: PendingHireRoomView) => {
     try {
       setDecliningRequestRoomId(request.room_id);
+      const systemMsg = toSystemDeclineMessage(
+        "Freelancer declined your hire request."
+      );
+
       const { error: declineErr } = await withTimeout(
-        supabase
-          .from("chat_rooms")
-          .update({ hire_status: "idle", hire_request_message: null })
-          .eq("id", request.room_id)
+        supabase.from("chat_messages").insert({
+          room_id: request.room_id,
+          order_id: id,
+          sender_id: currentUserId,
+          message: systemMsg
+        })
       );
 
       if (declineErr) throw declineErr;

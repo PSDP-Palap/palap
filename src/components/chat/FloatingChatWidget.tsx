@@ -4,7 +4,7 @@ import { MessageCircle, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useUserStore } from "@/stores/useUserStore";
-import { cleanPreviewMessage, isSystemMessage } from "@/utils/helpers";
+import { cleanPreviewMessage, isSystemMessage, withTimeout } from "@/utils/helpers";
 import supabase, { isUuidLike } from "@/utils/supabase";
 
 interface ConversationItem {
@@ -33,19 +33,33 @@ const FloatingChatWidget = () => {
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const isFetchingRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
   const lastLoadTimeRef = useRef(0);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const isPaymentConfirmPage = pathname === "/payment";
   const isCheckoutFooterPage = pathname === "/order-summary" || pathname === "/payment";
   const isActiveChatPage = pathname.startsWith("/chat/");
+
+  const isColumnMissingError = (error: any) => {
+    const message = String(error?.message || "").toLowerCase();
+    const code = String(error?.code || "").toLowerCase();
+    return (
+      code === "pgrst204" ||
+      code === "42703" ||
+      message.includes("column") ||
+      message.includes("does not exist") ||
+      message.includes("could not find")
+    );
+  };
 
   useEffect(() => {
     if (!userId || !isInitialized) return;
 
     let active = true;
+    let fetchUnlockTimer: number | null = null;
 
     const loadConversations = async () => {
       if (isFetchingRef.current) return;
@@ -54,34 +68,84 @@ const FloatingChatWidget = () => {
 
       try {
         isFetchingRef.current = true;
-        setLoading(true);
+        if (fetchUnlockTimer) {
+          window.clearTimeout(fetchUnlockTimer);
+        }
+        // Safety unlock: if any async branch hangs, allow next poll to recover.
+        fetchUnlockTimer = window.setTimeout(() => {
+          isFetchingRef.current = false;
+        }, 15000);
 
-        const { data: rooms, error: roomError } = await supabase
-          .from("chat_rooms")
-          .select("id, order_id, customer_id, freelancer_id, last_message_at")
-          .or(`customer_id.eq.${userId},freelancer_id.eq.${userId}`)
-          .order("last_message_at", { ascending: false })
-          .limit(100);
+        if (!hasLoadedOnceRef.current) {
+          setLoading(true);
+        }
+
+        let rooms: any[] | null = null;
+        let roomError: any = null;
+
+        const roomQueryVariants = [
+          {
+            select: "id, order_id, customer_id, freelancer_id, last_message_at",
+            filter: `customer_id.eq.${userId},freelancer_id.eq.${userId}`
+          },
+          {
+            select: "id, order_id, customer_id, freelance_id, last_message_at",
+            filter: `customer_id.eq.${userId},freelance_id.eq.${userId}`
+          }
+        ];
+
+        for (const variant of roomQueryVariants) {
+          const result = await withTimeout(
+            supabase
+              .from("chat_rooms")
+              .select(variant.select)
+              .or(variant.filter)
+              .order("last_message_at", { ascending: false })
+              .limit(100),
+            12000
+          );
+
+          if (!result.error) {
+            rooms = (result.data as any[]) ?? [];
+            roomError = null;
+            break;
+          }
+
+          roomError = result.error;
+          if (!isColumnMissingError(result.error)) {
+            break;
+          }
+        }
 
         if (!active || roomError || !rooms) {
-          if (active) setConversations([]);
+          if (active) {
+            setConversations([]);
+            hasLoadedOnceRef.current = true;
+            setHasLoadedOnce(true);
+          }
           return;
         }
 
-        const roomRows = (rooms as any[]).filter((r) => isUuidLike(r.id));
+        // Keep rows even if room ids are non-UUID in some environments.
+        const roomRows = (rooms as any[]).filter((r) => String(r.id || "").length > 0);
         const roomIds = roomRows.map((item) => String(item.id));
-        const partnerIds = Array.from(
-          new Set(
-            roomRows.flatMap((item) => [String(item.customer_id), String(item.freelancer_id)])
+        const partnerIds = roomRows
+          .map((item) =>
+            String(item.customer_id) === String(userId)
+              ? item.freelancer_id ?? item.freelance_id
+              : item.customer_id
           )
-        ).filter(isUuidLike);
+          .filter(Boolean);
 
         const { data: messageRows } = roomIds.length > 0
-          ? await supabase
-              .from("chat_messages")
-              .select("room_id, message, created_at")
-              .in("room_id", roomIds)
-              .order("created_at", { ascending: false })
+          ? await withTimeout(
+              supabase
+                .from("chat_messages")
+                .select("room_id, message, created_at")
+                .in("room_id", roomIds)
+                .order("created_at", { ascending: false }),
+              12000
+            )
           : { data: [] as any[] };
 
         const latestMessageByRoom = new Map<string, { message: string; created_at: string }>();
@@ -96,9 +160,35 @@ const FloatingChatWidget = () => {
           });
         });
 
-        const { data: profileRows } = partnerIds.length > 0
-          ? await supabase.from("profiles").select("id, full_name, email, avatar_url").in("id", partnerIds)
-          : { data: [] as any[] };
+        let profileRows: any[] = [];
+        if (partnerIds.length > 0) {
+          const profileResult = await withTimeout(
+            supabase.from("profiles").select("*").in("id", partnerIds),
+            12000
+          );
+
+          if (profileResult.error) {
+            const fallbackPartnerIds = partnerIds.filter((id) =>
+              isUuidLike(String(id || ""))
+            );
+
+            if (fallbackPartnerIds.length > 0) {
+              const fallbackProfileResult = await withTimeout(
+                supabase
+                  .from("profiles")
+                  .select("*")
+                  .in("id", fallbackPartnerIds),
+                12000
+              );
+
+              profileRows = ((fallbackProfileResult.data as any[]) ?? []).filter(
+                Boolean
+              );
+            }
+          } else {
+            profileRows = ((profileResult.data as any[]) ?? []).filter(Boolean);
+          }
+        }
 
         if (!active) return;
 
@@ -107,7 +197,7 @@ const FloatingChatWidget = () => {
             String(item.id),
             {
               name: item.full_name || item.email || "User",
-              avatarUrl: item.avatar_url || null,
+              avatarUrl: item.avatar_url || item.image_url || item.photo_url || null,
             },
           ])
         );
@@ -116,11 +206,13 @@ const FloatingChatWidget = () => {
           const roomId = String(item.id);
           const orderId = String(item.order_id);
           const partnerId = String(item.customer_id) === String(userId)
-            ? String(item.freelancer_id)
+            ? String(item.freelancer_id ?? item.freelance_id ?? "")
             : String(item.customer_id);
           const partner = profileMap.get(partnerId);
           const customer = profileMap.get(String(item.customer_id));
-          const freelancer = profileMap.get(String(item.freelancer_id));
+          const freelancer = profileMap.get(
+            String(item.freelancer_id ?? item.freelance_id ?? "")
+          );
           const latest = latestMessageByRoom.get(roomId);
 
           return {
@@ -128,7 +220,11 @@ const FloatingChatWidget = () => {
             roomId,
             orderId,
             partnerId,
-            partnerName: partner?.name || "User",
+            partnerName:
+              partner?.name ||
+              (String(item.customer_id) === String(userId)
+                ? "Freelancer"
+                : "Customer"),
             partnerAvatarUrl: partner?.avatarUrl || null,
             customerName: customer?.name || "Customer",
             customerAvatarUrl: customer?.avatarUrl || null,
@@ -150,14 +246,24 @@ const FloatingChatWidget = () => {
           });
 
         setConversations(Array.from(mergedMap.values()));
+        hasLoadedOnceRef.current = true;
+        setHasLoadedOnce(true);
         lastLoadTimeRef.current = Date.now();
       } catch (err) {
         console.error("Error loading chat conversations:", err);
-        if (active) setConversations([]);
+        if (active) {
+          setConversations([]);
+          hasLoadedOnceRef.current = true;
+          setHasLoadedOnce(true);
+        }
       } finally {
+        if (fetchUnlockTimer) {
+          window.clearTimeout(fetchUnlockTimer);
+          fetchUnlockTimer = null;
+        }
+        isFetchingRef.current = false;
         if (active) {
           setLoading(false);
-          isFetchingRef.current = false;
         }
       }
     };
@@ -193,6 +299,10 @@ const FloatingChatWidget = () => {
 
     return () => {
       active = false;
+      isFetchingRef.current = false;
+      if (fetchUnlockTimer) {
+        window.clearTimeout(fetchUnlockTimer);
+      }
       window.clearInterval(pollingTimer);
       window.removeEventListener("service-chat-updated", handleExternalChatUpdate);
       supabase.removeChannel(channel);
@@ -253,7 +363,7 @@ const FloatingChatWidget = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {loading && conversations.length === 0 ? (
+            {loading && !hasLoadedOnce && conversations.length === 0 ? (
               <div className="p-8 text-center">
                 <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
                 <p className="text-sm text-gray-500 font-medium">Loading messages...</p>

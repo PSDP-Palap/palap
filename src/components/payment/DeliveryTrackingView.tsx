@@ -24,6 +24,8 @@ interface DeliveryTrackingViewProps {
   setIsTrackingWidgetOpen: (
     val: boolean | ((prev: boolean) => boolean)
   ) => void;
+  showDeliveredNotice: boolean;
+  acknowledgeDeliveredNotice: () => void;
   loadTracking: (id: string) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   router: any;
@@ -49,6 +51,8 @@ export function DeliveryTrackingView({
   currentProductLng,
   isTrackingWidgetOpen,
   setIsTrackingWidgetOpen,
+  showDeliveredNotice,
+  acknowledgeDeliveredNotice,
   loadTracking,
   router
 }: DeliveryTrackingViewProps) {
@@ -383,6 +387,26 @@ export function DeliveryTrackingView({
           router={router}
           routeUrl={routeUrl}
         />
+      )}
+
+      {showDeliveredNotice && (
+        <div className="fixed inset-0 z-[100] bg-black/35 flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-xl bg-white border border-orange-200 shadow-2xl p-6 text-center">
+            <p className="text-2xl font-black text-green-600 uppercase">
+              Order Succeed
+            </p>
+            <p className="mt-3 text-sm text-gray-600">
+              Your order has been completed by the freelancer.
+            </p>
+            <button
+              type="button"
+              onClick={acknowledgeDeliveredNotice}
+              className="mt-5 px-6 py-2 rounded-lg bg-green-600 text-white font-black hover:bg-green-700"
+            >
+              Agree
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

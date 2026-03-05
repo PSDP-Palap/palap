@@ -1,25 +1,30 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 import { useCartStore } from "@/stores/useCartStore";
 import { useUserStore } from "@/stores/useUserStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import supabase from "@/utils/supabase";
-import type { PaymentMethod } from "@/types/payment";
 import type { Product } from "@/types/product";
 import { PaymentSummary } from "@/components/payment/PaymentSummary";
-import {
-  toNumber,
-  isCompletedOrderStatus,
-} from "@/utils/helpers";
 
 export const Route = createFileRoute("/_authenticated/checkout")({
   component: CheckoutComponent,
 });
 
-const ORDER_CREATE_STATUS_CANDIDATES = ["pending", "looking_freelancer", "created", "new", "open", "requested", "serving", "in_progress"];
+const ORDER_CREATE_STATUS_CANDIDATES = [
+  "waiting",
+  "pending",
+  "looking_freelancer",
+  "created",
+  "new",
+  "open",
+  "requested",
+  "serving",
+  "in_progress"
+];
 
 function CheckoutComponent() {
   const router = useRouter();
@@ -135,48 +140,128 @@ function CheckoutComponent() {
         throw new Error("Missing pickup or destination address.");
       }
 
-      // Create Service Session
-      const { data: createdService, error: serviceError } = await supabase
-        .from("services")
-        .insert([{
-          name: selectedProduct.name,
-          price: total,
-          category: "DELIVERY_SESSION",
-          pickup_address: savedAddress.address_detail || savedAddress.name,
-          dest_address: savedAddress.address_detail || savedAddress.name,
-          image_url: selectedProduct.image_url,
-          created_by: currentUserId
-        }])
-        .select("service_id")
-        .single();
+      // Create Service Session (supports multiple owner column variants)
+      const serviceBasePayload = {
+        name: selectedProduct.name,
+        price: total,
+        category: "DELIVERY_SESSION",
+        pickup_address: savedAddress.address_detail || savedAddress.name,
+        dest_address: savedAddress.address_detail || savedAddress.name,
+        image_url: selectedProduct.image_url
+      };
 
-      if (serviceError) throw serviceError;
-      const serviceId = createdService.service_id;
+      const serviceOwnerColumns = [
+        "created_by",
+        "freelancer_id",
+        "freelance_id",
+        "user_id",
+        "profile_id"
+      ];
+
+      let createdService: any = null;
+      let serviceInsertError: any = null;
+
+      for (const ownerColumn of serviceOwnerColumns) {
+        const payload = {
+          ...serviceBasePayload,
+          [ownerColumn]: currentUserId
+        } as any;
+
+        const { data, error } = await supabase
+          .from("services")
+          .insert([payload])
+          .select("service_id")
+          .single();
+
+        if (!error && data) {
+          createdService = data;
+          serviceInsertError = null;
+          break;
+        }
+
+        serviceInsertError = error;
+      }
+
+      if (!createdService) {
+        const { data, error } = await supabase
+          .from("services")
+          .insert([serviceBasePayload])
+          .select("service_id")
+          .single();
+
+        if (error) throw error;
+        createdService = data;
+      }
+
+      if (!createdService?.service_id) {
+        throw new Error(serviceInsertError?.message || "Failed to create service session.");
+      }
+
+      const serviceId = String(createdService.service_id);
 
       // Create Order
       let orderId: string | null = null;
-      for (const status of ORDER_CREATE_STATUS_CANDIDATES) {
-        const { data: newOrder, error: orderError } = await supabase
+      let lastOrderError: any = null;
+
+      const baseOrderPayload = {
+        customer_id: currentUserId,
+        service_id: serviceId,
+        product_id: selectedProduct.id,
+        pickup_address_id: pickupAddressId,
+        destination_address_id: destinationAddressId,
+        price: total,
+        freelance_id: null
+      };
+
+      const orderPayloadCandidates = [
+        baseOrderPayload,
+        {
+          ...baseOrderPayload,
+          destination_address_id: undefined,
+          dest_address_id: destinationAddressId
+        }
+      ];
+
+      for (const payloadCandidate of orderPayloadCandidates) {
+        for (const status of ORDER_CREATE_STATUS_CANDIDATES) {
+          const payload = {
+            ...payloadCandidate,
+            status
+          };
+
+          const { data: newOrder, error: orderError } = await supabase
+            .from("orders")
+            .insert([payload])
+            .select("order_id")
+            .single();
+
+          if (!orderError && newOrder?.order_id) {
+            orderId = String(newOrder.order_id);
+            break;
+          }
+
+          lastOrderError = orderError;
+        }
+
+        if (orderId) break;
+
+        const { data: fallbackOrder, error: fallbackOrderError } = await supabase
           .from("orders")
-          .insert([{
-            customer_id: currentUserId,
-            service_id: serviceId,
-            product_id: selectedProduct.id,
-            pickup_address_id: pickupAddressId,
-            destination_address_id: destinationAddressId,
-            price: total,
-            status: status
-          }])
+          .insert([payloadCandidate])
           .select("order_id")
           .single();
 
-        if (!orderError) {
-          orderId = newOrder.order_id;
+        if (!fallbackOrderError && fallbackOrder?.order_id) {
+          orderId = String(fallbackOrder.order_id);
           break;
         }
+
+        lastOrderError = fallbackOrderError;
       }
 
-      if (!orderId) throw new Error("Failed to create order.");
+      if (!orderId) {
+        throw new Error(lastOrderError?.message || "Failed to create order.");
+      }
 
       // Create Transaction
       await supabase.from("transactions").insert([{
@@ -190,7 +275,7 @@ function CheckoutComponent() {
       clearCart();
       setActiveOrderId(orderId);
       toast.success("Order confirmed successfully!");
-      router.navigate({ to: "/payment" }); // This will now show tracking
+      router.navigate({ to: "/payment" });
     } catch (err: any) {
       setSubmitError(err.message || "Failed to confirm order.");
       toast.error("Confirmation failed.");
