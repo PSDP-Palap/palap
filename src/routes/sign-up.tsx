@@ -4,7 +4,7 @@ import RegisterBackButton from "@/components/auth/RegisterBackButton";
 import RegisterForm from "@/components/auth/RegisterForm";
 import RegisterHeader from "@/components/auth/RegisterHeader";
 
-export const Route = createFileRoute("/_guest/sign-up")({
+export const Route = createFileRoute("/sign-up")({
   component: () => (
     <div className="relative min-h-screen">
       <div className="absolute w-full h-full bg-[#FF6D2D] opacity-20" />

@@ -49,7 +49,7 @@ const Navbar = () => {
         <div className="flex items-center gap-2">
           <Link to="/" className="flex gap-2 items-center">
             <img src="/logo.png" alt="logo" className="h-8" />
-            <img src="logo_title.png" alt="logo_title.png" className="h-8" />
+            <img src="/logo_title.png" alt="logo_title.png" className="h-8" />
           </Link>
         </div>
         <ul className="flex gap-6 items-center">
@@ -107,14 +107,12 @@ const Navbar = () => {
                       <span className="font-bold text-gray-700">Profile</span>
                     </Link>
                   </DropdownMenuItem>
-                  {isCustomer && (
                     <DropdownMenuItem
                       asChild
                       className="rounded-xl focus:bg-orange-50 cursor-pointer"
                     >
                       <Link
-                        to="/payment"
-                        hash="#order-history"
+                        to="/order-history"
                         className="flex items-center gap-2 py-2"
                       >
                         <History className="w-4 h-4 text-orange-600" />
@@ -123,7 +121,6 @@ const Navbar = () => {
                         </span>
                       </Link>
                     </DropdownMenuItem>
-                  )}
                   <DropdownMenuItem
                     onClick={handleLogout}
                     className="rounded-xl focus:bg-red-50 text-red-600 cursor-pointer flex items-center gap-2 py-2"

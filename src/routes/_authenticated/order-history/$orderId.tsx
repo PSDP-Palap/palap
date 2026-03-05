@@ -182,7 +182,7 @@ function RouteComponent() {
         <p className="text-red-600 font-semibold">{error || "Order not found."}</p>
         <button
           type="button"
-          onClick={() => router.navigate({ to: "/payment", hash: "#order-history" })}
+          onClick={() => router.navigate({ to: "/order-history" })}
           className="px-4 py-2 rounded-lg bg-[#A03F00] text-white font-black"
         >
           Back to Order History
@@ -242,7 +242,7 @@ function RouteComponent() {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => router.navigate({ to: "/payment", hash: "#order-history" })}
+              onClick={() => router.navigate({ to: "/order-history" })}
               className="px-5 py-2 rounded-lg bg-[#A03F00] text-white font-black hover:bg-[#8a3600]"
             >
               Back to Order History
@@ -253,7 +253,10 @@ function RouteComponent() {
                   type="button"
                   onClick={() => {
                     useOrderStore.getState().setActiveOrderId(detail.orderId);
-                    router.navigate({ to: "/payment" });
+                    router.navigate({
+                      to: "/order/$order_id" as any,
+                      params: { order_id: detail.orderId } as any
+                    });
                   }}
                   className="px-5 py-2 rounded-lg bg-blue-100 text-blue-700 font-black hover:bg-blue-200"
                 >

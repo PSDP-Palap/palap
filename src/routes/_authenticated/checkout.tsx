@@ -324,7 +324,7 @@ function CheckoutComponent() {
                 <div className="space-y-3">
                   {orderRows.map((row) => (
                     <div key={row.id} className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-lg bg-orange-50 overflow-hidden flex-shrink-0 border border-orange-100">
+                      <div className="w-12 h-12 rounded-lg bg-orange-50 overflow-hidden shrink-0 border border-orange-100">
                         {row.imageUrl ? (
                           <img
                             src={row.imageUrl}

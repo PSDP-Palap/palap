@@ -2,10 +2,11 @@ import { Link } from "@tanstack/react-router";
 
 import Loading from "@/components/shared/Loading";
 import type { PendingHireRoomView, Service } from "@/types/service";
+import type { FreelanceProfile } from "@/types/user";
 
 interface ServiceDetailViewProps {
   service: Service;
-  creator: any;
+  creator: FreelanceProfile;
   defaultImage: string;
   defaultDescription: string;
   defaultHireMessage: string;
@@ -30,6 +31,8 @@ interface ServiceDetailViewProps {
   decliningRequestRoomId: string | null;
   chatError: string | null;
   requestError: string | null;
+  activeOrderId: string | null;
+  hasActiveOrder: boolean;
 }
 
 export function ServiceDetailView({
@@ -58,7 +61,9 @@ export function ServiceDetailView({
   declineHireRequest,
   decliningRequestRoomId,
   chatError,
-  requestError
+  requestError,
+  activeOrderId,
+  hasActiveOrder
 }: ServiceDetailViewProps) {
   return (
     <div className="min-h-screen bg-[#F9E6D8] pt-24 pb-10">
@@ -69,7 +74,7 @@ export function ServiceDetailView({
               <img
                 src={service.image_url || defaultImage}
                 alt={service.name}
-                className="w-full aspect-[4/3] object-cover rounded-xl"
+                className="w-full aspect-4/3 object-cover rounded-xl"
               />
             </div>
 
@@ -101,16 +106,9 @@ export function ServiceDetailView({
                 </p>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-orange-100 border border-orange-200 overflow-hidden flex items-center justify-center text-sm font-black text-[#4A2600]">
-                    {creator?.avatar_url ||
-                    creator?.image_url ||
-                    creator?.photo_url ? (
+                    {creator?.avatar_url ? (
                       <img
-                        src={
-                          creator?.avatar_url ||
-                          creator?.image_url ||
-                          creator?.photo_url ||
-                          ""
-                        }
+                        src={creator?.avatar_url || ""}
                         alt={
                           creator?.full_name ||
                           creator?.email ||
@@ -129,8 +127,8 @@ export function ServiceDetailView({
                       {creator?.full_name || creator?.email || "Freelance user"}
                     </p>
                     <p className="text-xs text-orange-900/60 mt-1">
-                      {creator?.user_role || creator?.role
-                        ? `Role: ${creator?.user_role || creator?.role}`
+                      {creator?.role
+                        ? `Role: ${creator?.role}`
                         : "Role: freelance"}
                     </p>
                   </div>
@@ -138,11 +136,11 @@ export function ServiceDetailView({
               </div>
 
               <p className="text-5xl font-black text-[#111111]">
-                $ {service.price}
+                ฿ {service.price}
               </p>
 
               <div className="pt-2 flex flex-wrap gap-2 items-center">
-                {canOpenDeliverySessionChat && (
+                {(canOpenDeliverySessionChat || hasActiveOrder) && (
                   <button
                     type="button"
                     onClick={openChat}
@@ -153,7 +151,7 @@ export function ServiceDetailView({
                   </button>
                 )}
 
-                {canTryHire && !isHireRequested && (
+                {canTryHire && !hasActiveOrder && !isHireRequested && (
                   <div className="w-full">
                     <p className="text-xs font-bold uppercase tracking-wider text-orange-700/70 mb-2">
                       Message to freelancer
@@ -163,13 +161,13 @@ export function ServiceDetailView({
                       onChange={(event) =>
                         setHireRequestMessage(event.target.value)
                       }
-                      className="w-full border border-orange-200 rounded-xl px-3 py-2 text-sm bg-white min-h-[88px]"
+                      className="w-full border border-orange-200 rounded-xl px-3 py-2 text-sm bg-white min-h-22"
                       placeholder="Write your request message to the freelancer"
                     />
                   </div>
                 )}
 
-                {canTryHire && !isHireRequested && (
+                {canTryHire && !hasActiveOrder && !isHireRequested && (
                   <button
                     type="button"
                     onClick={sendHireRequest}
@@ -184,7 +182,7 @@ export function ServiceDetailView({
                   </button>
                 )}
 
-                {canTryHire && hasPendingHire && (
+                {canTryHire && !hasActiveOrder && hasPendingHire && (
                   <button
                     type="button"
                     disabled
@@ -194,18 +192,7 @@ export function ServiceDetailView({
                   </button>
                 )}
 
-                {canTryHire && hasAcceptedHire && (
-                  <button
-                    type="button"
-                    onClick={openChat}
-                    disabled={startingChat}
-                    className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${startingChat ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
-                  >
-                    {startingChat ? "Opening Chat..." : "Open Chat"}
-                  </button>
-                )}
-
-                {canTryHire &&
+                {canTryHire && !hasActiveOrder &&
                   isHireRequested &&
                   !hasPendingHire &&
                   !hasAcceptedHire && (
@@ -231,14 +218,14 @@ export function ServiceDetailView({
                 </Link>
               </div>
 
-              {canTryHire && hasPendingHire && (
+              {canTryHire && !hasActiveOrder && hasPendingHire && (
                 <p className="text-sm text-orange-700 font-semibold">
                   Your request has been sent. The freelancer must accept before
                   chat starts.
                 </p>
               )}
 
-              {canTryHire && hasAcceptedHire && (
+              {canTryHire && !hasActiveOrder && hasAcceptedHire && (
                 <p className="text-sm text-green-700 font-semibold">
                   Request accepted. You can now open chat.
                 </p>

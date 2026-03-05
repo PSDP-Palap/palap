@@ -22,6 +22,7 @@ export interface DeliveryTracking {
   freelanceName: string;
   freelanceId: string | null;
   freelanceAvatarUrl: string | null;
+  paymentId?: string | null;
 }
 
 export interface SavedAddressSnapshot {

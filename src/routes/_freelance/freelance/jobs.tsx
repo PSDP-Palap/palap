@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 import MyJobsTab from "@/components/freelance/MyJobsTab";
 import { useUserStore } from "@/stores/useUserStore";
@@ -53,6 +54,7 @@ function JobsRoute() {
   const [completingOrderId, setCompletingOrderId] = useState<string | null>(
     null
   );
+  const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -169,19 +171,21 @@ function JobsRoute() {
           .map((m) => String(m.order_id))
       );
 
-      const normalized: DeliveryOrderItem[] = orders.map((o) => ({
-        orderId: String(o.order_id),
-        customerId: String(o.customer_id || ""),
-        customerName: pMap.get(String(o.customer_id)) || "Customer",
-        productName: prMap.get(String(o.product_id)) || "Order",
-        pickupLabel: aMap.get(String(o.pickup_address_id)) || "Pickup",
-        destinationLabel:
-          aMap.get(String(o.destination_address_id)) || "Destination",
-        price: Number(o.price || 0),
-        status: String(o.status || "pending"),
-        freelancer_id: o.freelancer_id,
-        freelance_id: o.freelance_id
-      }));
+      const normalized: DeliveryOrderItem[] = orders
+        .filter((o) => !!o.product_id) // Only delivery orders have product_id in this context
+        .map((o) => ({
+          orderId: String(o.order_id),
+          customerId: String(o.customer_id || ""),
+          customerName: pMap.get(String(o.customer_id)) || "Customer",
+          productName: prMap.get(String(o.product_id)) || "Order",
+          pickupLabel: aMap.get(String(o.pickup_address_id)) || "Pickup",
+          destinationLabel:
+            aMap.get(String(o.destination_address_id)) || "Destination",
+          price: Number(o.price || 0),
+          status: String(o.status || "pending"),
+          freelancer_id: o.freelancer_id,
+          freelance_id: o.freelance_id
+        }));
 
       setAvailableDeliveryOrders(
         normalized.filter((o) => !o.status || o.status === "pending")
@@ -204,43 +208,34 @@ function JobsRoute() {
     if (!currentUserId) return;
     try {
       setLoadingPendingHireRequests(true);
-      const { data: rooms } = await supabase
-        .from("chat_rooms")
-        .select("*")
-        .eq("freelancer_id", currentUserId)
-        .limit(50);
-      if (!rooms || rooms.length === 0) {
+      // Fetch orders where status is 'waiting' and freelance_id is current user
+      const { data: orders, error: ordersError } = await supabase
+        .from("orders")
+        .select("*, services(name)")
+        .eq("freelance_id", currentUserId)
+        .eq("status", "waiting")
+        .order("created_at", { ascending: false });
+
+      if (ordersError) throw ordersError;
+
+      if (!orders || orders.length === 0) {
         setPendingHireRequests([]);
         return;
       }
 
-      const roomIds = rooms.map((r) => r.id);
-      const orderIds = Array.from(
-        new Set(rooms.map((r) => String(r.order_id)).filter(Boolean))
-      );
+      const orderIds = orders.map((o) => o.order_id);
+      const { data: rooms } = await supabase
+        .from("chat_rooms")
+        .select("*")
+        .in("order_id", orderIds);
 
-      const [
-        { data: messageRows },
-        { data: profileRows },
-        { data: serviceRows }
-      ] = await Promise.all([
-        supabase
-          .from("chat_messages")
-          .select("*")
-          .in("room_id", roomIds)
-          .order("created_at", { ascending: true }),
-        supabase
-          .from("profiles")
-          .select("id, full_name, email")
-          .in(
-            "id",
-            rooms.map((r) => r.customer_id)
-          ),
-        supabase
-          .from("services")
-          .select("service_id, name")
-          .in("service_id", orderIds)
-      ]);
+      const { data: profileRows } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in(
+          "id",
+          orders.map((o) => o.customer_id)
+        );
 
       const pMap = new Map(
         (profileRows || []).map((p) => [
@@ -248,40 +243,18 @@ function JobsRoute() {
           p.full_name || p.email || "Customer"
         ])
       );
-      const sMap = new Map(
-        (serviceRows || []).map((s) => [String(s.service_id), s.name])
-      );
+      const rMap = new Map((rooms || []).map((r) => [String(r.order_id), r.id]));
 
-      const pending = rooms
-        .map((room) => {
-          const roomMsgs = (messageRows || []).filter(
-            (m) => m.room_id === room.id
-          );
-          const hasRequest = roomMsgs.some((m) =>
-            String(m.message).startsWith("[SYSTEM_HIRE_REQUEST]")
-          );
-          const hasAccepted = roomMsgs.some((m) =>
-            String(m.message).startsWith("[SYSTEM_HIRE_ACCEPTED]")
-          );
-
-          if (!hasRequest || hasAccepted) return null;
-
-          const reqMsg = roomMsgs.find((m) =>
-            String(m.message).startsWith("[SYSTEM_HIRE_REQUEST]")
-          );
-          return {
-            roomId: room.id,
-            serviceId: String(room.order_id),
-            customerId: String(room.customer_id),
-            customerName: pMap.get(String(room.customer_id)) || "Customer",
-            serviceName: sMap.get(String(room.order_id)) || "Service",
-            requestMessage: String(reqMsg?.message || "")
-              .replace("[SYSTEM_HIRE_REQUEST]", "")
-              .trim(),
-            requestedAt: reqMsg?.created_at
-          };
-        })
-        .filter(Boolean) as PendingHireRequestItem[];
+      const pending = orders.map((order) => ({
+        roomId: rMap.get(String(order.order_id)) || "",
+        orderId: String(order.order_id),
+        serviceId: String(order.service_id),
+        customerId: String(order.customer_id),
+        customerName: pMap.get(String(order.customer_id)) || "Customer",
+        serviceName: order.services?.name || "Service",
+        requestMessage: "Customer wants to hire your service",
+        requestedAt: order.created_at
+      }));
 
       setPendingHireRequests(pending);
     } finally {
@@ -293,39 +266,33 @@ function JobsRoute() {
     if (!currentUserId) return;
     try {
       setLoadingOngoingServiceJobs(true);
-      const { data: rooms } = await supabase
-        .from("chat_rooms")
-        .select("*")
-        .eq("freelancer_id", currentUserId);
+      const { data: orders, error: ordersError } = await supabase
+        .from("orders")
+        .select("*, services(name)")
+        .eq("freelance_id", currentUserId)
+        .in("status", ["on_my_way", "in_service", "complete"]) // Include complete for visibility
+        .order("updated_at", { ascending: false });
 
-      if (!rooms || rooms.length === 0) {
+      if (ordersError) throw ordersError;
+
+      if (!orders || orders.length === 0) {
         setOngoingServiceJobs([]);
         return;
       }
 
-      const roomIds = rooms.map((r) => r.id);
-      const orderIds = Array.from(
-        new Set(rooms.map((r) => String(r.order_id)).filter(Boolean))
-      );
+      const orderIds = orders.map((o) => o.order_id);
+      const { data: rooms } = await supabase
+        .from("chat_rooms")
+        .select("*")
+        .in("order_id", orderIds);
 
-      const [
-        { data: messageRows },
-        { data: profileRows },
-        { data: serviceRows }
-      ] = await Promise.all([
-        supabase.from("chat_messages").select("*").in("room_id", roomIds),
-        supabase
-          .from("profiles")
-          .select("id, full_name, email")
-          .in(
-            "id",
-            rooms.map((r) => r.customer_id)
-          ),
-        supabase
-          .from("services")
-          .select("service_id, name, price")
-          .in("service_id", orderIds)
-      ]);
+      const { data: profileRows } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in(
+          "id",
+          orders.map((o) => o.customer_id)
+        );
 
       const pMap = new Map(
         (profileRows || []).map((p) => [
@@ -333,37 +300,20 @@ function JobsRoute() {
           p.full_name || p.email || "Customer"
         ])
       );
-      const sMap = new Map(
-        (serviceRows || []).map((s) => [String(s.service_id), s])
-      );
+      const rMap = new Map((rooms || []).map((r) => [String(r.order_id), r.id]));
 
-      const ongoing = rooms
-        .map((room) => {
-          const roomMsgs = (messageRows || []).filter(
-            (m) => m.room_id === room.id
-          );
-          const hasAccepted = roomMsgs.some((m) =>
-            String(m.message).startsWith("[SYSTEM_HIRE_ACCEPTED]")
-          );
-
-          if (!hasAccepted) return null;
-
-          const acceptMsg = roomMsgs.find((m) =>
-            String(m.message).startsWith("[SYSTEM_HIRE_ACCEPTED]")
-          );
-          const svc = sMap.get(String(room.order_id));
-
-          return {
-            roomId: room.id,
-            serviceId: String(room.order_id),
-            customerId: String(room.customer_id),
-            customerName: pMap.get(String(room.customer_id)) || "Customer",
-            serviceName: svc?.name || "Service",
-            acceptedAt: acceptMsg?.created_at || room.updated_at,
-            price: Number(svc?.price || 0)
-          };
-        })
-        .filter(Boolean) as OngoingServiceJobItem[];
+      const ongoing = orders.map((order) => ({
+        roomId: rMap.get(String(order.order_id)) || "",
+        orderId: String(order.order_id),
+        serviceId: String(order.service_id),
+        customerId: String(order.customer_id),
+        customerName: pMap.get(String(order.customer_id)) || "Customer",
+        serviceName: order.services?.name || "Service",
+        acceptedAt: order.created_at,
+        lastAt: order.updated_at,
+        price: Number(order.price || 0),
+        status: order.status
+      }));
 
       setOngoingServiceJobs(ongoing);
     } finally {
@@ -374,28 +324,82 @@ function JobsRoute() {
   const acceptHireRequest = async (request: PendingHireRequestItem) => {
     if (!currentUserId) return;
     try {
-      setAcceptingHireRoomId(request.roomId);
+      setAcceptingHireRoomId(request.orderId);
+      // Update order status to 'on_my_way' (first step after waiting)
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({ status: "on_my_way" })
+        .eq("order_id", request.orderId);
+
+      if (orderError) throw orderError;
+
       const systemMessage =
-        "[SYSTEM_HIRE_ACCEPTED] Hire request accepted. You can now start chat.";
-      const { error: msgError } = await supabase.from("chat_messages").insert([
+        "[SYSTEM_HIRE_ACCEPTED] Freelancer accepted your request and is on the way!";
+      await supabase.from("chat_messages").insert([
         {
           room_id: request.roomId,
-          order_id: request.serviceId,
+          order_id: request.orderId,
           sender_id: currentUserId,
           message: systemMessage
         }
       ]);
-      if (msgError) throw msgError;
-      await supabase
-        .from("chat_rooms")
-        .update({ last_message_at: new Date().toISOString() })
-        .eq("id", request.roomId);
-      setSuccess("Hire request accepted.");
+
+      toast.success("Job accepted!");
       await refreshJobBoard();
     } catch (err: any) {
-      setError(err?.message || "Unable to accept hire request.");
+      toast.error(err?.message || "Unable to accept job.");
     } finally {
       setAcceptingHireRoomId(null);
+    }
+  };
+
+  const rejectHireRequest = async (request: PendingHireRequestItem) => {
+    if (!currentUserId) return;
+    try {
+      setAcceptingHireRoomId(request.orderId);
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({ status: "reject" })
+        .eq("order_id", request.orderId);
+
+      if (orderError) throw orderError;
+
+      const systemMessage = "[SYSTEM_HIRE_DECLINED] Freelancer declined this request.";
+      await supabase.from("chat_messages").insert([
+        {
+          room_id: request.roomId,
+          order_id: request.orderId,
+          sender_id: currentUserId,
+          message: systemMessage
+        }
+      ]);
+
+      toast.success("Job rejected.");
+      await refreshJobBoard();
+    } catch (err: any) {
+      toast.error(err?.message || "Unable to reject job.");
+    } finally {
+      setAcceptingHireRoomId(null);
+    }
+  };
+
+  const updateJobStatus = async (orderId: string, nextStatus: string) => {
+    if (!currentUserId) return;
+    try {
+      setUpdatingJobId(orderId);
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({ status: nextStatus })
+        .eq("order_id", orderId);
+
+      if (updateError) throw updateError;
+
+      toast.success(`Status updated to ${nextStatus.replace(/_/g, " ")}`);
+      await refreshJobBoard();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update status.");
+    } finally {
+      setUpdatingJobId(null);
     }
   };
 
@@ -487,8 +491,11 @@ function JobsRoute() {
       jobBoardLastUpdatedAt={jobBoardLastUpdatedAt}
       pendingHireRequests={pendingHireRequests}
       acceptHireRequest={acceptHireRequest}
+      rejectHireRequest={rejectHireRequest}
       acceptingHireRoomId={acceptingHireRoomId}
       ongoingServiceJobs={ongoingServiceJobs}
+      updateJobStatus={updateJobStatus}
+      updatingJobId={updatingJobId}
       availableDeliveryOrders={availableDeliveryOrders}
       acceptDeliveryOrder={acceptDeliveryOrder}
       acceptingOrderId={acceptingOrderId}

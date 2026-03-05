@@ -21,8 +21,11 @@ interface MyJobsTabProps {
   jobBoardLastUpdatedAt: string | null;
   pendingHireRequests: PendingHireRequestItem[];
   acceptHireRequest: (request: PendingHireRequestItem) => Promise<void>;
+  rejectHireRequest: (request: PendingHireRequestItem) => Promise<void>;
   acceptingHireRoomId: string | null;
   ongoingServiceJobs: OngoingServiceJobItem[];
+  updateJobStatus: (orderId: string, status: string) => Promise<void>;
+  updatingJobId: string | null;
   availableDeliveryOrders: DeliveryOrderItem[];
   acceptDeliveryOrder: (order: DeliveryOrderItem) => Promise<void>;
   acceptingOrderId: string | null;
@@ -73,8 +76,11 @@ const MyJobsTab = ({
   jobBoardLastUpdatedAt,
   pendingHireRequests,
   acceptHireRequest,
+  rejectHireRequest,
   acceptingHireRoomId,
   ongoingServiceJobs,
+  updateJobStatus,
+  updatingJobId,
   availableDeliveryOrders,
   acceptDeliveryOrder,
   acceptingOrderId,
@@ -181,10 +187,32 @@ const MyJobsTab = ({
     [mapBounds.top, mapBounds.right]
   ];
 
-  const isAnyLoading = loadingDeliveryOrders || loadingPendingHireRequests || loadingOngoingServiceJobs;
+  const isAnyLoading =
+    loadingDeliveryOrders ||
+    loadingPendingHireRequests ||
+    loadingOngoingServiceJobs;
+
+  const getNextStatus = (currentStatus: string) => {
+    if (currentStatus === "on_my_way") return "in_service";
+    if (currentStatus === "in_service") return "complete";
+    return null;
+  };
+
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      on_my_way: "On My Way",
+      in_service: "In Service",
+      complete: "Complete",
+      reject: "Rejected",
+      waiting: "Waiting"
+    };
+    return labels[status] || status;
+  };
 
   return (
-    <div className={`space-y-4 min-h-full pb-10 flex flex-col ${isAnyLoading ? 'justify-center' : ''}`}>
+    <div
+      className={`space-y-4 min-h-full pb-10 flex flex-col ${isAnyLoading ? "justify-center" : ""}`}
+    >
       <div className="bg-white rounded-xl border border-orange-100 p-4 shadow-sm">
         <h2 className="text-xl font-black text-[#4A2600] mb-2">My Jobs</h2>
         <p className="text-sm text-gray-600">
@@ -241,7 +269,7 @@ const MyJobsTab = ({
               <div className="space-y-2">
                 {pendingHireRequests.map((request) => (
                   <div
-                    key={request.roomId}
+                    key={request.orderId}
                     className="bg-white border border-orange-100 rounded-lg p-3 space-y-1"
                   >
                     <p className="font-bold text-[#4A2600] truncate">
@@ -267,11 +295,19 @@ const MyJobsTab = ({
                     <div className="flex items-center justify-end gap-2 mt-2">
                       <button
                         type="button"
+                        onClick={() => rejectHireRequest(request)}
+                        disabled={acceptingHireRoomId === request.orderId}
+                        className="px-3 py-1.5 rounded-md bg-red-100 text-red-700 text-xs font-black disabled:bg-gray-100"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => acceptHireRequest(request)}
-                        disabled={acceptingHireRoomId === request.roomId}
+                        disabled={acceptingHireRoomId === request.orderId}
                         className="px-3 py-1.5 rounded-md bg-green-600 text-white text-xs font-black disabled:bg-gray-300"
                       >
-                        {acceptingHireRoomId === request.roomId
+                        {acceptingHireRoomId === request.orderId
                           ? "Accepting..."
                           : "Accept Request"}
                       </button>
@@ -300,32 +336,58 @@ const MyJobsTab = ({
               <div className="space-y-2">
                 {ongoingServiceJobs.map((job) => (
                   <div
-                    key={job.roomId}
+                    key={job.orderId}
                     className="bg-white border border-orange-100 rounded-lg p-3 space-y-1"
                   >
                     <p className="font-bold text-[#4A2600] truncate">
                       {job.serviceName}
                     </p>
-                    <p className="text-xs text-orange-700 truncate">
-                      Customer: {job.customerName}
-                    </p>
+                    <div className="flex justify-between items-start">
+                      <p className="text-xs text-orange-700 truncate">
+                        Customer: {job.customerName}
+                      </p>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${job.status === "complete" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}
+                      >
+                        {getStatusLabel(job.status)}
+                      </span>
+                    </div>
                     <p className="text-xs text-gray-500">
-                      Accepted:{" "}
+                      Started:{" "}
                       {job.acceptedAt
                         ? new Date(job.acceptedAt).toLocaleString()
                         : "-"}
                     </p>
-                    <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-orange-50">
                       <p className="font-black text-[#5D2611]">
                         ฿ {job.price.toFixed(2)}
                       </p>
-                      <Link
-                        to="/chat/$id"
-                        params={{ id: job.roomId }}
-                        className="px-3 py-1.5 rounded-md bg-[#A03F00] text-white text-xs font-black"
-                      >
-                        Open Chat
-                      </Link>
+                      <div className="flex gap-2">
+                        {getNextStatus(job.status) && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateJobStatus(
+                                job.orderId,
+                                getNextStatus(job.status)!
+                              )
+                            }
+                            disabled={updatingJobId === job.orderId}
+                            className="px-3 py-1.5 rounded-md bg-orange-600 text-white text-xs font-black disabled:bg-orange-300"
+                          >
+                            {updatingJobId === job.orderId
+                              ? "Updating..."
+                              : `Mark ${getStatusLabel(getNextStatus(job.status)!)}`}
+                          </button>
+                        )}
+                        <Link
+                          to="/chat/$id"
+                          params={{ id: job.roomId }}
+                          className="px-3 py-1.5 rounded-md bg-[#A03F00] text-white text-xs font-black"
+                        >
+                          Chat
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 ))}

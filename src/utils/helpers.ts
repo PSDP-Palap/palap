@@ -41,7 +41,11 @@ export const ORDER_COMPLETED_STATUS_SET = new Set([
   "closed"
 ]);
 
-export const isCompletedOrderStatus = (status: string | null | undefined): boolean => {
+export const isCompletedOrderStatus = (
+  status: string | null | undefined,
+  paymentId?: string | null | undefined
+): boolean => {
+  if (paymentId && String(paymentId).trim()) return true;
   return ORDER_COMPLETED_STATUS_SET.has(String(status || "").toLowerCase());
 };
 

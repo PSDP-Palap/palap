@@ -3,7 +3,9 @@ import type { DeliveryTracking } from "@/types/payment";
 interface DeliveryTrackingWidgetProps {
   activeOrderId: string;
   isTrackingWidgetOpen: boolean;
-  setIsTrackingWidgetOpen: (val: boolean | ((prev: boolean) => boolean)) => void;
+  setIsTrackingWidgetOpen: (
+    val: boolean | ((prev: boolean) => boolean)
+  ) => void;
   accepted: boolean;
   trackingData: DeliveryTracking;
   status: string;
@@ -23,7 +25,7 @@ export function DeliveryTrackingWidget({
   trackingLoading,
   loadTracking,
   router,
-  routeUrl,
+  routeUrl
 }: DeliveryTrackingWidgetProps) {
   return (
     <aside

@@ -6,12 +6,12 @@ import { DateTimeSection } from "@/components/payment/DateTimeSection";
 import { LocationSection } from "@/components/payment/LocationSection";
 import { OrderItemsList } from "@/components/payment/OrderItemsList";
 import { PriceSummarySide } from "@/components/payment/PriceSummarySide";
+import Loading from "@/components/shared/Loading";
 import { useCartStore } from "@/stores/useCartStore";
 import { useUserStore } from "@/stores/useUserStore";
 import type { SavedAddressSnapshot } from "@/types/payment";
 import type { Product } from "@/types/product";
 import supabase from "@/utils/supabase";
-import Loading from "@/components/shared/Loading";
 
 export const Route = createFileRoute("/_authenticated/order-summary")({
   component: RouteComponent

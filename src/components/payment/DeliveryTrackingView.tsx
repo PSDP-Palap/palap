@@ -30,6 +30,8 @@ interface DeliveryTrackingViewProps {
   loadTracking: (id: string) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   router: any;
+  handlePay?: () => Promise<void>;
+  isPaying?: boolean;
 }
 
 export function DeliveryTrackingView({
@@ -55,8 +57,12 @@ export function DeliveryTrackingView({
   showDeliveredNotice,
   acknowledgeDeliveredNotice,
   loadTracking,
-  router
+  router,
+  handlePay,
+  isPaying = false
 }: DeliveryTrackingViewProps) {
+  const isCompleteUnpaid = status === "complete";
+
   return (
     <div className="min-h-screen bg-[#F9E6D8] pt-24 pb-10">
       <main className="max-w-6xl mx-auto px-4">
@@ -78,6 +84,26 @@ export function DeliveryTrackingView({
               </span>
             </div>
           </div>
+
+          {isCompleteUnpaid && handlePay && (
+            <div className="rounded-2xl border-2 border-orange-200 bg-orange-50 p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm animate-pulse">
+              <div className="text-center md:text-left">
+                <h3 className="text-xl font-black text-orange-800 uppercase tracking-tight">
+                  Payment Required
+                </h3>
+                <p className="text-sm text-orange-700 font-bold">
+                  The freelancer has completed the work. Please release the payment of ฿ {trackingData?.price.toFixed(2)}.
+                </p>
+              </div>
+              <button
+                onClick={handlePay}
+                disabled={isPaying}
+                className="w-full md:w-auto px-10 py-3 rounded-xl bg-[#FF914D] text-white font-black text-lg shadow-lg hover:bg-[#e67e3d] transition-all transform hover:scale-105 active:scale-95 disabled:bg-gray-300 disabled:scale-100"
+              >
+                {isPaying ? "Processing..." : "Pay Now"}
+              </button>
+            </div>
+          )}
 
           {(trackingLoading || !trackingData) && !trackingError && (
             <div className="rounded-xl border border-orange-100 bg-orange-50 p-5">
@@ -360,10 +386,10 @@ export function DeliveryTrackingView({
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => router.navigate({ to: "/product" })}
+              onClick={() => router.navigate({ to: "/order-history" })}
               className="px-5 py-2 rounded-lg bg-[#A03F00] text-white font-black hover:bg-[#8a3600]"
             >
-              Back to Products
+              Back to History
             </button>
             <button
               type="button"

@@ -31,6 +31,7 @@ export interface DeliveryOrderItem {
 
 export interface PendingHireRequestItem {
   roomId: string;
+  orderId: string;
   serviceId: string;
   customerId: string;
   customerName: string;
@@ -41,6 +42,7 @@ export interface PendingHireRequestItem {
 
 export interface OngoingServiceJobItem {
   roomId: string;
+  orderId: string;
   serviceId: string;
   customerId: string;
   customerName: string;
@@ -48,4 +50,5 @@ export interface OngoingServiceJobItem {
   acceptedAt: string;
   lastAt: string;
   price: number;
+  status: string;
 }

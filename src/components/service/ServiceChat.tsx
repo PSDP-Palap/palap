@@ -44,11 +44,13 @@ interface ServiceChatProps {
   canSubmitWork?: boolean;
   canApproveWork?: boolean;
   canDeclineWork?: boolean;
+  canPayForCompletedWork?: boolean;
   onPayAndStartWork?: () => Promise<void>;
   onSubmitWork?: () => Promise<void>;
   onApproveWork?: () => Promise<void>;
   onDeclineWork?: () => Promise<void>;
-  workflowBusyAction?: "pay" | "submit" | "approve" | "decline" | null;
+  onPayForCompletedWork?: () => Promise<void>;
+  workflowBusyAction?: "pay" | "submit" | "approve" | "decline" | "complete_pay" | null;
 }
 
 export function ServiceChat({
@@ -85,10 +87,12 @@ export function ServiceChat({
   canSubmitWork = false,
   canApproveWork = false,
   canDeclineWork = false,
+  canPayForCompletedWork = false,
   onPayAndStartWork,
   onSubmitWork,
   onApproveWork,
   onDeclineWork,
+  onPayForCompletedWork,
   workflowBusyAction = null
 }: ServiceChatProps) {
   const { profile, session } = useUserStore();
@@ -294,6 +298,19 @@ export function ServiceChat({
                           className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-black disabled:bg-gray-300"
                         >
                           {workflowBusyAction === "decline" ? "Sending..." : "Request Revision"}
+                        </button>
+                      )}
+
+                      {canPayForCompletedWork && onPayForCompletedWork && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onPayForCompletedWork();
+                          }}
+                          disabled={workflowBusyAction !== null}
+                          className="px-3 py-1.5 rounded-md bg-[#FF914D] text-white text-xs font-black shadow-md hover:bg-[#e67e3d] transition-all disabled:bg-gray-300"
+                        >
+                          {workflowBusyAction === "complete_pay" ? "Processing..." : "Pay Now"}
                         </button>
                       )}
                     </div>
