@@ -1,4 +1,5 @@
-import type { DeliveryTracking, MockChatMessage } from "@/types/payment";
+import type { DeliveryTracking } from "@/types/payment";
+
 import { DeliveryTrackingWidget } from "./DeliveryTrackingWidget";
 
 interface DeliveryTrackingViewProps {
@@ -19,16 +20,12 @@ interface DeliveryTrackingViewProps {
   hasCurrentProductCoordinates: boolean;
   currentProductLat: number | null;
   currentProductLng: number | null;
-  MOCK_DELIVERY_FLOW: boolean;
-  isMockChatOpen: boolean;
-  setIsMockChatOpen: (val: boolean | ((prev: boolean) => boolean)) => void;
-  mockChatMessages: MockChatMessage[];
-  mockChatInput: string;
-  setMockChatInput: (val: string) => void;
-  sendMockChatMessage: () => void;
   isTrackingWidgetOpen: boolean;
-  setIsTrackingWidgetOpen: (val: boolean | ((prev: boolean) => boolean)) => void;
+  setIsTrackingWidgetOpen: (
+    val: boolean | ((prev: boolean) => boolean)
+  ) => void;
   loadTracking: (id: string) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   router: any;
 }
 
@@ -50,17 +47,10 @@ export function DeliveryTrackingView({
   hasCurrentProductCoordinates,
   currentProductLat,
   currentProductLng,
-  MOCK_DELIVERY_FLOW,
-  isMockChatOpen,
-  setIsMockChatOpen,
-  mockChatMessages,
-  mockChatInput,
-  setMockChatInput,
-  sendMockChatMessage,
   isTrackingWidgetOpen,
   setIsTrackingWidgetOpen,
   loadTracking,
-  router,
+  router
 }: DeliveryTrackingViewProps) {
   return (
     <div className="min-h-screen bg-[#F9E6D8] pt-24 pb-10">
@@ -76,15 +66,6 @@ export function DeliveryTrackingView({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {MOCK_DELIVERY_FLOW && (
-                <button
-                  type="button"
-                  onClick={() => setIsMockChatOpen((prev) => !prev)}
-                  className="px-3 py-1 rounded-full text-xs font-black uppercase bg-[#A03F00] text-white hover:bg-[#8a3600]"
-                >
-                  {isMockChatOpen ? "Close Chat" : "Mock Chat"}
-                </button>
-              )}
               <span
                 className={`px-3 py-1 rounded-full text-xs font-black uppercase ${accepted ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}
               >
@@ -92,57 +73,6 @@ export function DeliveryTrackingView({
               </span>
             </div>
           </div>
-
-          {MOCK_DELIVERY_FLOW && isMockChatOpen && (
-            <section className="rounded-xl border border-orange-100 bg-white p-4">
-              <p className="text-xs font-black uppercase tracking-wider text-orange-700/70 mb-3">
-                Mock Chat
-              </p>
-
-              <div className="rounded-lg border border-orange-100 bg-[#fff8f2] p-3 h-[220px] overflow-y-auto space-y-2">
-                {mockChatMessages.map((message) => {
-                  const isMine = message.sender === "me";
-                  return (
-                    <div
-                      key={message.id}
-                      className={`flex ${isMine ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[78%] rounded-xl px-3 py-2 text-sm ${isMine ? "bg-[#F2A779] text-[#4A2600]" : "bg-white border border-orange-200 text-[#4A2600]"}`}
-                      >
-                        <p>{message.text}</p>
-                        <p className="text-[10px] opacity-60 mt-1">
-                          {new Date(message.createdAt).toLocaleTimeString()}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-3 flex items-center gap-2">
-                <input
-                  value={mockChatInput}
-                  onChange={(e) => setMockChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      sendMockChatMessage();
-                    }
-                  }}
-                  placeholder="Type message..."
-                  className="flex-1 border border-orange-200 rounded-lg px-3 py-2 text-sm outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={sendMockChatMessage}
-                  className="px-4 py-2 rounded-lg bg-[#D35400] text-white font-black text-sm hover:bg-[#b34700]"
-                >
-                  Send
-                </button>
-              </div>
-            </section>
-          )}
 
           {(trackingLoading || !trackingData) && !trackingError && (
             <div className="rounded-xl border border-orange-100 bg-orange-50 p-5">
@@ -209,7 +139,7 @@ export function DeliveryTrackingView({
                   <iframe
                     title="Delivery map"
                     src={mapSrc}
-                    className="w-full h-[260px]"
+                    className="w-full h-65"
                     loading="lazy"
                   />
 
@@ -322,8 +252,8 @@ export function DeliveryTrackingView({
               </div>
 
               {isDelivered ? (
-                <section className="rounded-xl border border-orange-200 p-6 md:p-8 bg-gradient-to-r from-[#FFE2CF] via-[#FFD5B8] to-[#FFC79E] flex justify-center items-center min-h-[220px]">
-                  <div className="w-full max-w-[280px] rounded-xl border-2 border-orange-300 bg-[#fff7f0] px-4 py-5 text-center shadow-sm">
+                <section className="rounded-xl border border-orange-200 p-6 md:p-8 bg-linear-to-r from-[#FFE2CF] via-[#FFD5B8] to-[#FFC79E] flex justify-center items-center min-h-55">
+                  <div className="w-full max-w-70 rounded-xl border-2 border-orange-300 bg-[#fff7f0] px-4 py-5 text-center shadow-sm">
                     <div className="mx-auto w-16 h-16 rounded-full border-[3px] border-orange-500 overflow-hidden bg-orange-50 flex items-center justify-center text-xl font-black text-[#4A2600]">
                       {trackingData.freelanceAvatarUrl ? (
                         <img
@@ -394,9 +324,7 @@ export function DeliveryTrackingView({
                         Looking for a freelancer
                       </p>
                       <p
-                        className={
-                          accepted ? "font-black text-orange-600" : ""
-                        }
+                        className={accepted ? "font-black text-orange-600" : ""}
                       >
                         Freelancer has accepted
                       </p>

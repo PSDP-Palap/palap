@@ -1,0 +1,276 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import toast from "react-hot-toast";
+
+import { useCartStore } from "@/stores/useCartStore";
+import { useUserStore } from "@/stores/useUserStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import supabase from "@/utils/supabase";
+import type { PaymentMethod } from "@/types/payment";
+import type { Product } from "@/types/product";
+import { PaymentSummary } from "@/components/payment/PaymentSummary";
+import {
+  toNumber,
+  isCompletedOrderStatus,
+} from "@/utils/helpers";
+
+export const Route = createFileRoute("/_authenticated/checkout")({
+  component: CheckoutComponent,
+});
+
+const ORDER_CREATE_STATUS_CANDIDATES = ["pending", "looking_freelancer", "created", "new", "open", "requested", "serving", "in_progress"];
+
+function CheckoutComponent() {
+  const router = useRouter();
+  const cartItems = useCartStore((s) => s.items);
+  const hasHydrated = useCartStore((s) => s.hasHydrated);
+  const clearCart = useCartStore((s) => s.clear);
+  const { profile, session } = useUserStore();
+  const currentUserId = profile?.id || session?.user?.id || null;
+  const { selectedPaymentMethod, setActiveOrderId } = useOrderStore();
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [savedAddress, setSavedAddress] = useState<any | null>(null);
+  const [cartHydrationTimedOut, setCartHydrationTimedOut] = useState(false);
+
+  const isCartReady = hasHydrated || cartHydrationTimedOut;
+
+  useEffect(() => {
+    if (hasHydrated) return;
+    const timer = window.setTimeout(() => setCartHydrationTimedOut(true), 1500);
+    return () => window.clearTimeout(timer);
+  }, [hasHydrated]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (!isCartReady || !currentUserId) return;
+
+      try {
+        setLoading(true);
+        // 1. Load Products
+        const selectedIds = Object.keys(cartItems);
+        const { data: productsData } = await supabase.from("products").select("*");
+        const selectedSet = new Set(selectedIds.map(String));
+        const normalized = ((productsData as any[]) ?? [])
+          .map((item) => ({
+            id: String(item.product_id ?? item.id ?? ""),
+            name: item.name,
+            price: Number(item.price ?? 0),
+            pickup_address_id: item.pickup_address_id ? String(item.pickup_address_id) : null,
+            image_url: item.image_url ? String(item.image_url) : null,
+          }))
+          .filter((item) => item.id && selectedSet.has(item.id));
+        setProducts(normalized as Product[]);
+
+        // 2. Load Address
+        const { data: customerRow } = await supabase
+          .from("customers")
+          .select("address_id")
+          .eq("id", currentUserId)
+          .maybeSingle();
+
+        if (customerRow?.address_id) {
+          const { data: addressRow } = await supabase
+            .from("addresses")
+            .select("*")
+            .eq("id", customerRow.address_id)
+            .maybeSingle();
+          setSavedAddress(addressRow);
+        }
+      } catch (error) {
+        console.error("Failed to load checkout data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [cartItems, isCartReady, currentUserId]);
+
+  const subtotal = useMemo(() => {
+    return products.reduce((sum, product) => {
+      const quantity = cartItems[product.id] || 0;
+      return sum + product.price * quantity;
+    }, 0);
+  }, [products, cartItems]);
+
+  const tax = Math.round(subtotal * 0.03 * 100) / 100;
+  const total = subtotal + tax;
+
+  const orderRows = useMemo(() => {
+    return products
+      .map((product) => {
+        const quantity = cartItems[product.id] || 0;
+        return {
+          id: product.id,
+          name: product.name,
+          imageUrl: product.image_url || null,
+          quantity,
+          unitPrice: product.price,
+          subtotal: product.price * quantity
+        };
+      })
+      .filter((row) => row.quantity > 0);
+  }, [products, cartItems]);
+
+  const completeOrder = async () => {
+    if (subtotal <= 0 || !currentUserId || products.length === 0 || !selectedPaymentMethod) {
+      toast.error("Please ensure all order details are complete.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setSubmitError(null);
+
+      const selectedProduct = products[0];
+      const pickupAddressId = selectedProduct?.pickup_address_id || null;
+      const destinationAddressId = savedAddress?.id || null;
+
+      if (!pickupAddressId || !destinationAddressId) {
+        throw new Error("Missing pickup or destination address.");
+      }
+
+      // Create Service Session
+      const { data: createdService, error: serviceError } = await supabase
+        .from("services")
+        .insert([{
+          name: selectedProduct.name,
+          price: total,
+          category: "DELIVERY_SESSION",
+          pickup_address: savedAddress.address_detail || savedAddress.name,
+          dest_address: savedAddress.address_detail || savedAddress.name,
+          image_url: selectedProduct.image_url,
+          created_by: currentUserId
+        }])
+        .select("service_id")
+        .single();
+
+      if (serviceError) throw serviceError;
+      const serviceId = createdService.service_id;
+
+      // Create Order
+      let orderId: string | null = null;
+      for (const status of ORDER_CREATE_STATUS_CANDIDATES) {
+        const { data: newOrder, error: orderError } = await supabase
+          .from("orders")
+          .insert([{
+            customer_id: currentUserId,
+            service_id: serviceId,
+            product_id: selectedProduct.id,
+            pickup_address_id: pickupAddressId,
+            destination_address_id: destinationAddressId,
+            price: total,
+            status: status
+          }])
+          .select("order_id")
+          .single();
+
+        if (!orderError) {
+          orderId = newOrder.order_id;
+          break;
+        }
+      }
+
+      if (!orderId) throw new Error("Failed to create order.");
+
+      // Create Transaction
+      await supabase.from("transactions").insert([{
+        order_id: orderId,
+        customer_id: currentUserId,
+        amount: total,
+        payment_method: selectedPaymentMethod,
+        status: "paid"
+      }]);
+
+      clearCart();
+      setActiveOrderId(orderId);
+      toast.success("Order confirmed successfully!");
+      router.navigate({ to: "/payment" }); // This will now show tracking
+    } catch (err: any) {
+      setSubmitError(err.message || "Failed to confirm order.");
+      toast.error("Confirmation failed.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F9E6D8] flex items-center justify-center">
+        <p className="text-[#D35400] font-bold">Reviewing your order...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F9E6D8] pt-24 pb-10">
+      <main className="max-w-5xl mx-auto px-4">
+        <div className="bg-[#FF914D] rounded-xl px-6 py-5 mb-4 text-white">
+          <h1 className="text-3xl font-black uppercase">Final Review</h1>
+          <p className="text-sm text-orange-100 font-semibold">Please check your details before confirming</p>
+        </div>
+
+        <div className="bg-orange-100/70 rounded-xl p-4 md:p-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2 space-y-4">
+              {/* Items Summary */}
+              <div className="bg-white rounded-xl p-4 shadow-sm border border-orange-100">
+                <h3 className="font-black text-[#4A2600] mb-3 uppercase text-sm tracking-wider">Items</h3>
+                <div className="space-y-3">
+                  {orderRows.map((row) => (
+                    <div key={row.id} className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-orange-50 overflow-hidden flex-shrink-0 border border-orange-100">
+                        {row.imageUrl ? <img src={row.imageUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xl">📦</div>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-[#4A2600] truncate text-sm">{row.name}</p>
+                        <p className="text-xs text-gray-500">Qty: {row.quantity} × ฿{row.unitPrice}</p>
+                      </div>
+                      <p className="font-bold text-[#4A2600] text-sm">฿{row.subtotal}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Location Summary */}
+              <div className="bg-white rounded-xl p-4 shadow-sm border border-orange-100">
+                <h3 className="font-black text-[#4A2600] mb-3 uppercase text-sm tracking-wider">Delivery to</h3>
+                <p className="font-bold text-[#4A2600] text-sm">{savedAddress?.name || "Main Location"}</p>
+                <p className="text-xs text-gray-500 mt-1">{savedAddress?.address_detail || "No detail provided"}</p>
+              </div>
+
+              {/* Payment Summary */}
+              <div className="bg-white rounded-xl p-4 shadow-sm border border-orange-100">
+                <h3 className="font-black text-[#4A2600] mb-3 uppercase text-sm tracking-wider">Payment Method</h3>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-black text-[10px] uppercase">
+                    {selectedPaymentMethod || "Not Selected"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <PaymentSummary
+                subtotal={subtotal}
+                tax={tax}
+                total={total}
+                isSubmitting={isSubmitting}
+                proceedDisabled={isSubmitting}
+                completePayment={completeOrder}
+                onBack={() => router.navigate({ to: "/payment" })}
+                submitError={submitError}
+                buttonText="Confirm Order"
+              />
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

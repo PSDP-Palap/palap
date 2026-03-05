@@ -7,6 +7,7 @@ interface PaymentSummaryProps {
   completePayment: () => void;
   onBack: () => void;
   submitError: string | null;
+  buttonText?: string;
 }
 
 export function PaymentSummary({
@@ -18,6 +19,7 @@ export function PaymentSummary({
   completePayment,
   onBack,
   submitError,
+  buttonText,
 }: PaymentSummaryProps) {
   return (
     <aside className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm h-fit">
@@ -56,7 +58,7 @@ export function PaymentSummary({
               : "bg-[#A03F00] text-white hover:bg-[#8a3600]"
           }`}
         >
-          {isSubmitting ? "Processing..." : "Proceed to Payment"}
+          {isSubmitting ? "Processing..." : (buttonText || "Proceed to Payment")}
         </button>
         <button
           type="button"

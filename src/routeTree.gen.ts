@@ -22,11 +22,13 @@ import { Route as GuestSignUpRouteImport } from './routes/_guest/sign-up'
 import { Route as GuestSignInRouteImport } from './routes/_guest/sign-in'
 import { Route as FreelanceFreelanceRouteImport } from './routes/_freelance/freelance'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
+import { Route as AuthenticatedPaymentRouteImport } from './routes/_authenticated/payment'
+import { Route as AuthenticatedOrderSummaryRouteImport } from './routes/_authenticated/order-summary'
 import { Route as AuthenticatedFreelanceSignUpRouteImport } from './routes/_authenticated/freelance-sign-up'
 import { Route as AuthenticatedEditProfileRouteImport } from './routes/_authenticated/edit-profile'
+import { Route as AuthenticatedCheckoutRouteImport } from './routes/_authenticated/checkout'
 import { Route as AdminAdminRouteImport } from './routes/_admin/admin'
-import { Route as AuthenticatedPaymentIndexRouteImport } from './routes/_authenticated/payment/index'
-import { Route as AuthenticatedPaymentConfirmRouteImport } from './routes/_authenticated/payment/confirm'
+import { Route as AuthenticatedChatIdRouteImport } from './routes/_authenticated/chat/$id'
 
 const GuestRoute = GuestRouteImport.update({
   id: '/_guest',
@@ -89,6 +91,17 @@ const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedPaymentRoute = AuthenticatedPaymentRouteImport.update({
+  id: '/payment',
+  path: '/payment',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedOrderSummaryRoute =
+  AuthenticatedOrderSummaryRouteImport.update({
+    id: '/order-summary',
+    path: '/order-summary',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedFreelanceSignUpRoute =
   AuthenticatedFreelanceSignUpRouteImport.update({
     id: '/freelance-sign-up',
@@ -101,29 +114,30 @@ const AuthenticatedEditProfileRoute =
     path: '/edit-profile',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedCheckoutRoute = AuthenticatedCheckoutRouteImport.update({
+  id: '/checkout',
+  path: '/checkout',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AdminAdminRoute = AdminAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
   getParentRoute: () => AdminRoute,
 } as any)
-const AuthenticatedPaymentIndexRoute =
-  AuthenticatedPaymentIndexRouteImport.update({
-    id: '/payment/',
-    path: '/payment/',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedPaymentConfirmRoute =
-  AuthenticatedPaymentConfirmRouteImport.update({
-    id: '/payment/confirm',
-    path: '/payment/confirm',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
+const AuthenticatedChatIdRoute = AuthenticatedChatIdRouteImport.update({
+  id: '/chat/$id',
+  path: '/chat/$id',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminAdminRoute
+  '/checkout': typeof AuthenticatedCheckoutRoute
   '/edit-profile': typeof AuthenticatedEditProfileRoute
   '/freelance-sign-up': typeof AuthenticatedFreelanceSignUpRoute
+  '/order-summary': typeof AuthenticatedOrderSummaryRoute
+  '/payment': typeof AuthenticatedPaymentRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/freelance': typeof FreelanceFreelanceRoute
   '/sign-in': typeof GuestSignInRoute
@@ -132,14 +146,16 @@ export interface FileRoutesByFullPath {
   '/service/$id': typeof ServiceIdRoute
   '/product/': typeof ProductIndexRoute
   '/service/': typeof ServiceIndexRoute
-  '/payment/confirm': typeof AuthenticatedPaymentConfirmRoute
-  '/payment/': typeof AuthenticatedPaymentIndexRoute
+  '/chat/$id': typeof AuthenticatedChatIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminAdminRoute
+  '/checkout': typeof AuthenticatedCheckoutRoute
   '/edit-profile': typeof AuthenticatedEditProfileRoute
   '/freelance-sign-up': typeof AuthenticatedFreelanceSignUpRoute
+  '/order-summary': typeof AuthenticatedOrderSummaryRoute
+  '/payment': typeof AuthenticatedPaymentRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/freelance': typeof FreelanceFreelanceRoute
   '/sign-in': typeof GuestSignInRoute
@@ -148,8 +164,7 @@ export interface FileRoutesByTo {
   '/service/$id': typeof ServiceIdRoute
   '/product': typeof ProductIndexRoute
   '/service': typeof ServiceIndexRoute
-  '/payment/confirm': typeof AuthenticatedPaymentConfirmRoute
-  '/payment': typeof AuthenticatedPaymentIndexRoute
+  '/chat/$id': typeof AuthenticatedChatIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -159,8 +174,11 @@ export interface FileRoutesById {
   '/_freelance': typeof FreelanceRouteWithChildren
   '/_guest': typeof GuestRouteWithChildren
   '/_admin/admin': typeof AdminAdminRoute
+  '/_authenticated/checkout': typeof AuthenticatedCheckoutRoute
   '/_authenticated/edit-profile': typeof AuthenticatedEditProfileRoute
   '/_authenticated/freelance-sign-up': typeof AuthenticatedFreelanceSignUpRoute
+  '/_authenticated/order-summary': typeof AuthenticatedOrderSummaryRoute
+  '/_authenticated/payment': typeof AuthenticatedPaymentRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_freelance/freelance': typeof FreelanceFreelanceRoute
   '/_guest/sign-in': typeof GuestSignInRoute
@@ -169,16 +187,18 @@ export interface FileRoutesById {
   '/service/$id': typeof ServiceIdRoute
   '/product/': typeof ProductIndexRoute
   '/service/': typeof ServiceIndexRoute
-  '/_authenticated/payment/confirm': typeof AuthenticatedPaymentConfirmRoute
-  '/_authenticated/payment/': typeof AuthenticatedPaymentIndexRoute
+  '/_authenticated/chat/$id': typeof AuthenticatedChatIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/admin'
+    | '/checkout'
     | '/edit-profile'
     | '/freelance-sign-up'
+    | '/order-summary'
+    | '/payment'
     | '/profile'
     | '/freelance'
     | '/sign-in'
@@ -187,14 +207,16 @@ export interface FileRouteTypes {
     | '/service/$id'
     | '/product/'
     | '/service/'
-    | '/payment/confirm'
-    | '/payment/'
+    | '/chat/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/admin'
+    | '/checkout'
     | '/edit-profile'
     | '/freelance-sign-up'
+    | '/order-summary'
+    | '/payment'
     | '/profile'
     | '/freelance'
     | '/sign-in'
@@ -203,8 +225,7 @@ export interface FileRouteTypes {
     | '/service/$id'
     | '/product'
     | '/service'
-    | '/payment/confirm'
-    | '/payment'
+    | '/chat/$id'
   id:
     | '__root__'
     | '/'
@@ -213,8 +234,11 @@ export interface FileRouteTypes {
     | '/_freelance'
     | '/_guest'
     | '/_admin/admin'
+    | '/_authenticated/checkout'
     | '/_authenticated/edit-profile'
     | '/_authenticated/freelance-sign-up'
+    | '/_authenticated/order-summary'
+    | '/_authenticated/payment'
     | '/_authenticated/profile'
     | '/_freelance/freelance'
     | '/_guest/sign-in'
@@ -223,8 +247,7 @@ export interface FileRouteTypes {
     | '/service/$id'
     | '/product/'
     | '/service/'
-    | '/_authenticated/payment/confirm'
-    | '/_authenticated/payment/'
+    | '/_authenticated/chat/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -332,6 +355,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/payment': {
+      id: '/_authenticated/payment'
+      path: '/payment'
+      fullPath: '/payment'
+      preLoaderRoute: typeof AuthenticatedPaymentRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/order-summary': {
+      id: '/_authenticated/order-summary'
+      path: '/order-summary'
+      fullPath: '/order-summary'
+      preLoaderRoute: typeof AuthenticatedOrderSummaryRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/freelance-sign-up': {
       id: '/_authenticated/freelance-sign-up'
       path: '/freelance-sign-up'
@@ -346,6 +383,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEditProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/checkout': {
+      id: '/_authenticated/checkout'
+      path: '/checkout'
+      fullPath: '/checkout'
+      preLoaderRoute: typeof AuthenticatedCheckoutRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_admin/admin': {
       id: '/_admin/admin'
       path: '/admin'
@@ -353,18 +397,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAdminRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/_authenticated/payment/': {
-      id: '/_authenticated/payment/'
-      path: '/payment'
-      fullPath: '/payment/'
-      preLoaderRoute: typeof AuthenticatedPaymentIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/payment/confirm': {
-      id: '/_authenticated/payment/confirm'
-      path: '/payment/confirm'
-      fullPath: '/payment/confirm'
-      preLoaderRoute: typeof AuthenticatedPaymentConfirmRouteImport
+    '/_authenticated/chat/$id': {
+      id: '/_authenticated/chat/$id'
+      path: '/chat/$id'
+      fullPath: '/chat/$id'
+      preLoaderRoute: typeof AuthenticatedChatIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
   }
@@ -381,19 +418,23 @@ const AdminRouteChildren: AdminRouteChildren = {
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedCheckoutRoute: typeof AuthenticatedCheckoutRoute
   AuthenticatedEditProfileRoute: typeof AuthenticatedEditProfileRoute
   AuthenticatedFreelanceSignUpRoute: typeof AuthenticatedFreelanceSignUpRoute
+  AuthenticatedOrderSummaryRoute: typeof AuthenticatedOrderSummaryRoute
+  AuthenticatedPaymentRoute: typeof AuthenticatedPaymentRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
-  AuthenticatedPaymentConfirmRoute: typeof AuthenticatedPaymentConfirmRoute
-  AuthenticatedPaymentIndexRoute: typeof AuthenticatedPaymentIndexRoute
+  AuthenticatedChatIdRoute: typeof AuthenticatedChatIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedCheckoutRoute: AuthenticatedCheckoutRoute,
   AuthenticatedEditProfileRoute: AuthenticatedEditProfileRoute,
   AuthenticatedFreelanceSignUpRoute: AuthenticatedFreelanceSignUpRoute,
+  AuthenticatedOrderSummaryRoute: AuthenticatedOrderSummaryRoute,
+  AuthenticatedPaymentRoute: AuthenticatedPaymentRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
-  AuthenticatedPaymentConfirmRoute: AuthenticatedPaymentConfirmRoute,
-  AuthenticatedPaymentIndexRoute: AuthenticatedPaymentIndexRoute,
+  AuthenticatedChatIdRoute: AuthenticatedChatIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

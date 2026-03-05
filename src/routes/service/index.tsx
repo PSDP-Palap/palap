@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Search } from "lucide-react";
 
 import supabase from "@/utils/supabase";
@@ -10,128 +10,61 @@ const DEFAULT_DESCRIPTION = "Reliable and professional pet service tailored for 
 const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1517849845537-4d257902454a?q=80&w=1200&auto=format&fit=crop";
 
 export const Route = createFileRoute("/service/")({
-  component: ServicePage,
+  component: RouteComponent,
 });
 
-function ServicePage() {
+function RouteComponent() {
   const [services, setServices] = useState<Service[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const isFetchingRef = useRef(false);
-
-  const withTimeout = async <T,>(factory: () => Promise<T>, timeoutMs = 12000): Promise<T> => {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error("Request timed out. Please try again."));
-      }, timeoutMs);
-
-      factory()
-        .then((result) => {
-          clearTimeout(timer);
-          resolve(result);
-        })
-        .catch((err) => {
-          clearTimeout(timer);
-          reject(err);
-        });
-    });
-  };
 
   const load = useCallback(async () => {
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
-
-    const watchdog = setTimeout(() => {
-      isFetchingRef.current = false;
-      setLoading(false);
-      setError("Loading took too long. Please try again.");
-    }, 20000);
-
     try {
       setLoading(true);
       setError(null);
+      console.log("DEBUG: Calling supabase.from('services').select('*')...");
 
-      const { data, error } = await withTimeout(async () =>
-        supabase
-          .from("services")
-          .select("*")
-      );
+      const response = await supabase
+        .from("services")
+        .select("*")
+        .neq("category", "DELIVERY_SESSION")
+        .order("created_at", { ascending: false })
+        .limit(100);
 
-      if (error) throw error;
+      console.log("DEBUG: Supabase response received:", response);
+      const { data, error: fetchError } = response;
 
-      const mapped: Service[] = (data ?? []).map((item: any) => ({
-        id: String(item.service_id ?? item.id ?? ""),
-        name: item.name ?? "Unnamed Service",
-        price: Number(item.price ?? 0),
-        category: item.category ?? null,
-        pickup_address: item.pickup_address ?? null,
-        dest_address: item.dest_address ?? null,
-        description: item.description ?? DEFAULT_DESCRIPTION,
-        image_url: item.image_url ?? DEFAULT_IMAGE,
-        creator_id: item.freelancer_id ?? item.created_by ?? item.user_id ?? item.profile_id ?? null,
-      }));
-
-      const validServices = mapped.filter((item) => item.id);
-      const visibleServices = validServices.filter((item) => {
-        const category = String(item.category || "").toUpperCase();
-        const name = String(item.name || "").toLowerCase();
-        const looksLikeOrderSession = name.includes("order session");
-
-        return category !== "DELIVERY_SESSION" && !looksLikeOrderSession;
-      });
-
-      const creatorIds = Array.from(
-        new Set(
-          visibleServices
-            .map((item) => item.creator_id)
-            .filter((value): value is string => Boolean(value))
-        )
-      );
-
-      if (creatorIds.length === 0) {
-        setServices(visibleServices);
-        return;
+      if (fetchError) {
+        console.error("DEBUG: Supabase fetch error:", fetchError);
+        throw fetchError;
       }
 
-      const { data: creatorProfiles, error: creatorError } = await withTimeout(async () =>
-        supabase
-          .from("profiles")
-          .select("*")
-          .in("id", creatorIds)
-      );
+      // 2. Filter 'order session' on Client-side to avoid slow Database scan
+      const visibleServices: Service[] = (data ?? [])
+        .map((item: any) => ({
+          id: String(item.service_id ?? item.id ?? ""),
+          name: item.name ?? "Unnamed Service",
+          price: Number(item.price ?? 0),
+          category: item.category ?? null,
+          pickup_address: item.pickup_address ?? null,
+          dest_address: item.dest_address ?? null,
+          description: item.description ?? DEFAULT_DESCRIPTION,
+          image_url: item.image_url ?? DEFAULT_IMAGE,
+          creator_id: item.freelancer_id ?? item.created_by ?? item.user_id ?? item.profile_id ?? null,
+          creator_name: "Freelancer", // Fallback since we removed the profile fetch
+          creator_avatar_url: null,
+        }))
+        .filter((item) => {
+          const name = String(item.name || "").toLowerCase();
+          return !name.includes("order session");
+        });
 
-      if (creatorError) {
-        setServices(visibleServices);
-        return;
-      }
-
-      const creatorMap = new Map(
-        (creatorProfiles ?? []).map((profile: any) => [
-          String(profile.id),
-          {
-            name: profile.full_name ?? profile.email ?? "Freelance user",
-            avatar_url: profile.avatar_url ?? profile.image_url ?? profile.photo_url ?? null,
-          },
-        ])
-      );
-
-      const enrichedServices = visibleServices.map((item) => {
-        const creator = item.creator_id ? creatorMap.get(String(item.creator_id)) : null;
-        return {
-          ...item,
-          creator_name: creator?.name ?? "Freelance user",
-          creator_avatar_url: creator?.avatar_url ?? null,
-        };
-      });
-
-      setServices(enrichedServices);
+      setServices(visibleServices);
     } catch (err: any) {
       console.error("Error fetching services:", err);
       setError(err.message || String(err));
     } finally {
-      clearTimeout(watchdog);
-      isFetchingRef.current = false;
       setLoading(false);
     }
   }, []);

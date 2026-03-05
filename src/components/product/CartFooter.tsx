@@ -112,7 +112,7 @@ export function CartFooter({
           </div>
           <button
             disabled={Object.keys(cartItems).length === 0}
-            onClick={() => router.navigate({ to: "/payment" })}
+            onClick={() => router.navigate({ to: "/order-summary" })}
             className={`px-8 py-3 rounded-2xl font-black uppercase text-sm tracking-widest transition-all transform active:scale-95 ${
               Object.keys(cartItems).length > 0
                 ? "bg-[#D35400] text-white hover:bg-[#b34700] shadow-lg shadow-orange-700/20"

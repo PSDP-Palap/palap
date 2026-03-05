@@ -7,6 +7,7 @@ import { ServiceChat } from "@/components/service/ServiceChat";
 import { ServiceDetailView } from "@/components/service/ServiceDetailView";
 import { useUserStore } from "@/stores/useUserStore";
 import type { ChatRoomListItem, PendingHireRoomView } from "@/types/service";
+import { withTimeout } from "@/utils/helpers";
 import supabase from "@/utils/supabase";
 
 export const Route = createFileRoute("/service/$id")({
@@ -22,27 +23,6 @@ const DEFAULT_HIRE_MESSAGE =
 const SYSTEM_REQUEST_PREFIX = "[SYSTEM_HIRE_REQUEST]";
 const SYSTEM_ACCEPT_PREFIX = "[SYSTEM_HIRE_ACCEPTED]";
 const CHAT_IMAGE_PREFIX = "[CHAT_IMAGE]";
-
-const withTimeout = async <T,>(
-  promiseLike: PromiseLike<T>,
-  timeoutMs = 12000
-): Promise<T> => {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error("Request timed out. Please try again."));
-    }, timeoutMs);
-
-    Promise.resolve(promiseLike)
-      .then((result) => {
-        clearTimeout(timer);
-        resolve(result);
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-  });
-};
 
 const getRoleValue = (value: any) => {
   if (typeof value === "string") return value;
@@ -162,23 +142,6 @@ function RouteComponent() {
   const canRequestHire = !!(canTryHire && !!creatorId);
   const hasAcceptedHire = isHireAccepted;
   const hasPendingHire = isHireRequested && !isHireAccepted;
-
-  const syncMockRoomToWidget = (roomKey: string, lastMessage?: string) => {
-    if (typeof window === "undefined") return;
-    try {
-      const key = `palap_mock_room_${roomKey}`;
-      const data = {
-        roomId: roomKey,
-        serviceId: id,
-        lastMessage: lastMessage || "Click to open chat",
-        updatedAt: new Date().toISOString()
-      };
-      localStorage.setItem(key, JSON.stringify(data));
-      window.dispatchEvent(new CustomEvent("palap_mock_rooms_updated"));
-    } catch (e) {
-      console.warn("Failed to sync mock room to widget", e);
-    }
-  };
 
   useEffect(() => {
     const loadService = async () => {
@@ -304,7 +267,7 @@ function RouteComponent() {
           supabase
             .from("chat_rooms")
             .select("id, customer_id, freelancer_id")
-            .eq("service_id", id)
+            .eq("order_id", id)
             .or(
               `and(customer_id.eq.${currentUserId},freelancer_id.eq.${creatorId}),and(customer_id.eq.${creatorId},freelancer_id.eq.${currentUserId})`
             )
@@ -326,9 +289,10 @@ function RouteComponent() {
           supabase
             .from("chat_rooms")
             .insert({
-              service_id: id,
+              order_id: id,
               customer_id: currentUserId,
-              freelancer_id: creatorId
+              freelancer_id: creatorId,
+              created_by: currentUserId
             })
             .select()
             .single()
@@ -364,7 +328,7 @@ function RouteComponent() {
             .select(
               "id, customer_id, freelancer_id, hire_status, hire_request_message"
             )
-            .eq("service_id", id)
+            .eq("order_id", id)
             .eq("freelancer_id", currentUserId)
             .eq("hire_status", "requested")
         );
@@ -402,7 +366,7 @@ function RouteComponent() {
           supabase
             .from("chat_rooms")
             .select("hire_status, hire_request_message")
-            .eq("service_id", id)
+            .eq("order_id", id)
             .eq("customer_id", currentUserId)
             .eq("freelancer_id", creatorId)
             .maybeSingle()
@@ -459,6 +423,7 @@ function RouteComponent() {
 
       await supabase.from("chat_messages").insert({
         room_id: rId,
+        order_id: id,
         sender_id: currentUserId,
         message: systemMsg
       });
@@ -491,6 +456,7 @@ function RouteComponent() {
 
       await supabase.from("chat_messages").insert({
         room_id: request.room_id,
+        order_id: id,
         sender_id: currentUserId,
         message: systemMsg
       });
@@ -598,24 +564,19 @@ function RouteComponent() {
         const { data, error: roomError } = await withTimeout(
           supabase
             .from("chat_rooms")
-            .select(
-              `
+            .select(`
               id,
-              service_id,
+              order_id,
               customer_id,
-              freelancer_id,
-              services ( name ),
-              chat_messages ( message, created_at )
-            `
-            )
-            .or(
-              `customer_id.eq.${currentUserId},freelancer_id.eq.${currentUserId}`
-            )
+              freelancer_id
+            `)
+            .or(`customer_id.eq.${currentUserId},freelancer_id.eq.${currentUserId}`)
         );
 
         if (roomError) throw roomError;
 
         if (data) {
+          const roomIds = data.map(r => r.id);
           const partnerIds = data
             .map((r) =>
               String(r.customer_id) === String(currentUserId)
@@ -624,50 +585,43 @@ function RouteComponent() {
             )
             .filter(Boolean);
 
-          const { data: profiles, error: pError } = await withTimeout(
-            supabase
-              .from("profiles")
-              .select("id, full_name, avatar_url")
-              .in("id", partnerIds)
-          );
-
-          if (pError) throw pError;
+          const [{ data: profiles }, { data: latestMessages }] = await Promise.all([
+            supabase.from("profiles").select("*").in("id", partnerIds),
+            supabase.from("chat_messages")
+              .select("room_id, message, created_at")
+              .in("room_id", roomIds)
+              .order("created_at", { ascending: false })
+          ]);
 
           const pMap = new Map((profiles || []).map((p) => [String(p.id), p]));
+          const msgMap = new Map();
+          (latestMessages || []).forEach(m => {
+            if (!msgMap.has(m.room_id)) msgMap.set(m.room_id, m);
+          });
 
           const list: ChatRoomListItem[] = data.map((r) => {
             const isCustomer = String(r.customer_id) === String(currentUserId);
             const partnerId = isCustomer ? r.freelancer_id : r.customer_id;
             const p = pMap.get(String(partnerId));
+            const last = msgMap.get(r.id);
 
-            const sortedMsgs = (r.chat_messages || []).sort(
-              (a: any, b: any) =>
-                new Date(b.created_at).getTime() -
-                new Date(a.created_at).getTime()
-            );
-
-            const last = sortedMsgs[0];
             const lastTxt = isImageMessage(last?.message)
               ? "Image"
               : stripSystemPrefix(last?.message || "No messages yet");
 
             return {
               roomId: r.id,
-              serviceId: r.service_id,
+              serviceId: r.order_id,
               partnerName: p?.full_name || "User",
               partnerAvatarUrl: p?.avatar_url || null,
               partnerRoleLabel: isCustomer ? "Freelancer" : "Customer",
-              serviceName: (r.services as any)?.name || "Service",
+              serviceName: "Order Chat",
               lastMessage: lastTxt,
               lastAt: last?.created_at || new Date().toISOString()
             };
           });
 
-          const sortedList = list.sort(
-            (a, b) =>
-              new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()
-          );
-          setChatRoomList(sortedList);
+          setChatRoomList(list.sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()));
         }
       } catch (e) {
         console.error("Load rooms list error", e);
@@ -695,22 +649,7 @@ function RouteComponent() {
         );
 
         if (msgError) throw msgError;
-        const dedupeMessagesById = (rows: any[]) => {
-          const seen = new Set<string>();
-          const next: any[] = [];
-          for (const row of rows) {
-            const key = row?.id ? String(row.id) : "";
-            if (!key) {
-              next.push(row);
-              continue;
-            }
-            if (seen.has(key)) continue;
-            seen.add(key);
-            next.push(row);
-          }
-          return next;
-        };
-        setMessages(dedupeMessagesById(data || []));
+        setMessages(data || []);
       } catch (e: any) {
         setChatError(e.message || "Failed to load messages");
       } finally {
@@ -731,22 +670,11 @@ function RouteComponent() {
           filter: `room_id=eq.${targetRoomId}`
         },
         (payload) => {
-          const dedupeMessagesById = (rows: any[]) => {
-            const seen = new Set<string>();
-            const next: any[] = [];
-            for (const row of rows) {
-              const key = row?.id ? String(row.id) : "";
-              if (!key) {
-                next.push(row);
-                continue;
-              }
-              if (seen.has(key)) continue;
-              seen.add(key);
-              next.push(row);
-            }
-            return next;
-          };
-          setMessages((prev) => dedupeMessagesById([...prev, payload.new]));
+          setMessages((prev) => {
+            const exists = prev.some(m => m.id === payload.new.id);
+            if (exists) return prev;
+            return [...prev, payload.new];
+          });
         }
       )
       .subscribe();
@@ -763,9 +691,11 @@ function RouteComponent() {
 
     try {
       setSending(true);
+
       const { error: sendError } = await withTimeout(
         supabase.from("chat_messages").insert({
           room_id: targetRoomId,
+          order_id: id,
           sender_id: currentUserId,
           message: text
         })
@@ -773,15 +703,12 @@ function RouteComponent() {
 
       if (sendError) throw sendError;
       if (!overrideMessage) setChatInput("");
-      syncMockRoomToWidget(targetRoomId, text);
     } catch (e: any) {
       setChatError(e.message || "Failed to send message");
     } finally {
       setSending(false);
     }
   };
-
-  const onPickImage = () => imageInputRef.current?.click();
 
   const onImageSelected = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -812,13 +739,13 @@ function RouteComponent() {
       const { error: sendError } = await withTimeout(
         supabase.from("chat_messages").insert({
           room_id: targetRoomId,
+          order_id: id,
           sender_id: currentUserId,
           message: imgMsg
         })
       );
 
       if (sendError) throw sendError;
-      syncMockRoomToWidget(targetRoomId, "Sent an image");
     } catch (e: any) {
       setChatError(e.message || "Failed to upload image");
     } finally {

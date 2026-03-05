@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createFileRoute } from "@tanstack/react-router";
 import supabase from "@/utils/supabase";
 import { Search } from 'lucide-react';
@@ -14,10 +14,6 @@ export const Route = createFileRoute("/product/")({
   component: RouteComponent
 });
 
-const MOCK_DESCRIPTIONS: { [key: string]: string } = {
-  default: 'High quality pet care service with professional grooming and care experts.',
-};
-
 
 function RouteComponent() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -31,54 +27,31 @@ function RouteComponent() {
   const removeCartItem = useCartStore((s) => s.remove);
   const [isFooterCartExpanded, setIsFooterCartExpanded] = useState(false);
 
-  const isFetchingRef = useRef(false);
-
-  const withTimeout = async <T,>(factory: () => Promise<T>, timeoutMs = 12000): Promise<T> => {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error("Request timed out. Please try again."));
-      }, timeoutMs);
-
-      factory()
-        .then((result) => {
-          clearTimeout(timer);
-          resolve(result);
-        })
-        .catch((err) => {
-          clearTimeout(timer);
-          reject(err);
-        });
-    });
-  };
-
   const load = useCallback(async () => {
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
-
-    const watchdog = setTimeout(() => {
-      isFetchingRef.current = false;
-      setLoading(false);
-      setError("Loading took too long. Please try again.");
-    }, 20000);
-
     try {
       setLoading(true);
       setError(null);
+      console.log("DEBUG: Calling supabase.from('products').select('*')...");
 
-      const { data, error } = await withTimeout(
-        async () =>
-          await supabase
+      const response = await supabase
             .from('products')
-            .select('*')
-      );
+            .select('product_id, name, price, qty, image_url')
+            .order('name', { ascending: true })
+            .limit(100);
 
-      if (error) throw error;
+      console.log("DEBUG: Supabase response received:", response);
+      const { data, error: fetchError } = response;
+
+      if (fetchError) {
+        console.error("DEBUG: Supabase fetch error:", fetchError);
+        throw fetchError;
+      }
 
       if (data) {
         const mapped: Product[] = data.map((item: any) => ({
-          id: item.product_id ?? String(item.id ?? ""),
+          id: String(item.product_id),
+          product_id: item.product_id,
           name: item.name,
-          description: item.description || MOCK_DESCRIPTIONS.default,
           price: item.price,
           qty: item.qty,
           image_url: item.image_url,
@@ -91,8 +64,6 @@ function RouteComponent() {
       console.error('Error fetching products:', err);
       setError(err.message || String(err));
     } finally {
-      clearTimeout(watchdog);
-      isFetchingRef.current = false;
       setLoading(false);
     }
   }, []);
@@ -216,5 +187,4 @@ function RouteComponent() {
       />
     </div>
   );
-} 
- 
+}

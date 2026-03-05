@@ -8,12 +8,12 @@ import { OrderItemsList } from "@/components/payment/OrderItemsList";
 import { PriceSummarySide } from "@/components/payment/PriceSummarySide";
 import { useCartStore } from "@/stores/useCartStore";
 import { useUserStore } from "@/stores/useUserStore";
-import supabase from "@/utils/supabase";
-import type { Product } from "@/types/product";
 import type { SavedAddressSnapshot } from "@/types/payment";
+import type { Product } from "@/types/product";
+import supabase from "@/utils/supabase";
 
-export const Route = createFileRoute("/_authenticated/payment/")({
-  component: RouteComponent,
+export const Route = createFileRoute("/_authenticated/order-summary")({
+  component: RouteComponent
 });
 
 function RouteComponent() {
@@ -279,7 +279,8 @@ function RouteComponent() {
 
       if (nextName) setLocationName(nextName);
       if (nextDetail) setLocationDetail(nextDetail);
-    } catch {
+    } catch (error) {
+      console.log(error);
     } finally {
       setResolvingAddress(false);
     }
@@ -347,7 +348,7 @@ function RouteComponent() {
       const nextAddressId = await persistLocation();
       if (!nextAddressId) return;
 
-      router.navigate({ to: "/payment/confirm" });
+      router.navigate({ to: "/payment" });
     } catch (err: any) {
       setLocationError(
         err?.message || "Failed to save destination before payment."

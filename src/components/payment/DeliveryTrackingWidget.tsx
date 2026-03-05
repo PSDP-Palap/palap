@@ -114,14 +114,13 @@ export function DeliveryTrackingWidget({
               <button
                 type="button"
                 onClick={() => {
-                  if (!trackingData.serviceId || !trackingData.roomId) return;
+                  if (!trackingData.roomId) return;
                   router.navigate({
-                    to: "/service/$id",
-                    params: { id: trackingData.serviceId },
-                    hash: `chat:${encodeURIComponent(trackingData.roomId)}`
+                    to: "/chat/$id",
+                    params: { id: trackingData.roomId }
                   });
                 }}
-                disabled={!trackingData.serviceId || !trackingData.roomId}
+                disabled={!trackingData.roomId}
                 className="px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 text-xs font-black disabled:bg-gray-100 disabled:text-gray-400"
               >
                 Open Chat

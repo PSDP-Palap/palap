@@ -1,4 +1,4 @@
-import { Navigate, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 
 import AdminDashboard from "@/components/admin/DashboardPage";
 import BannerSection from "@/components/home/BannerSection";
@@ -14,17 +14,14 @@ export const Route = createFileRoute("/")({
 function RouteComponent() {
   const { profile } = useUserStore();
 
-  // If Admin, show Admin Dashboard
   if (profile?.role === "admin") {
     return <AdminDashboard />;
   }
 
-  // If Freelance, show Freelance Dashboard
   if (profile?.role === "freelance") {
     return <Navigate to="/freelance" />;
   }
 
-  // Otherwise, show regular Home Page
   return (
     <main className="relative pb-16 bg-[#FFF2EC]">
       <div className="relative">

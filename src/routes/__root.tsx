@@ -4,8 +4,8 @@ import { useEffect } from "react";
 import { Toaster } from "react-hot-toast";
 
 import FloatingChatWidget from "@/components/chat/FloatingChatWidget";
-import GlobalOrderTrackingWidget from "@/components/tracking/GlobalOrderTrackingWidget";
 import Navbar from "@/components/Navbar";
+import GlobalOrderTrackingWidget from "@/components/tracking/GlobalOrderTrackingWidget";
 import { useUserStore } from "@/stores/useUserStore";
 
 export const Route = createRootRoute({

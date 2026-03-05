@@ -247,7 +247,7 @@ function RouteComponent() {
       onBuyNow={() => {
         if (isOutOfStock) return;
         setQuantity(id, Math.min(qty, maxQty));
-        router.navigate({ to: "/payment" });
+        router.navigate({ to: "/order-summary" });
       }}
     />
   );

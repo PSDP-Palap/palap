@@ -24,13 +24,6 @@ export interface DeliveryTracking {
   freelanceAvatarUrl: string | null;
 }
 
-export interface MockChatMessage {
-  id: string;
-  sender: "me" | "freelance";
-  text: string;
-  createdAt: string;
-}
-
 export interface SavedAddressSnapshot {
   id: string;
   name: string;
