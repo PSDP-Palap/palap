@@ -1378,6 +1378,41 @@ function RouteComponent() {
       await sendWorkflowMessage(
         `${SYSTEM_WORK_RELEASED_PREFIX} SERVICE:${serviceId} PRICE:${agreedText} CUSTOMER:${customerId} FREELANCER:${freelancerId} Payment released to freelancer earning.`
       );
+
+      // Update freelancer's earning in Supabase
+      const earningAmount = Number(agreedText);
+      if (freelancerId && earningAmount > 0) {
+        // Get current earning
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("earning")
+          .eq("id", freelancerId)
+          .maybeSingle();
+
+        if (profileError) {
+          toast.error("Failed to fetch freelancer earning: " + profileError.message);
+        } else if (!profileData) {
+          toast.error("Freelancer profile not found.");
+        } else {
+          const currentEarning = Number(profileData.earning || 0);
+          const newEarning = currentEarning + earningAmount;
+          const { error: updateError } = await supabase
+            .from("profiles")
+            .update({ earning: newEarning })
+            .eq("id", freelancerId);
+          if (updateError) {
+            toast.error("Failed to update earning: " + updateError.message);
+          } else {
+            toast.success("Freelancer earning updated!");
+            // Optionally, refresh profile in store if current user is freelancer
+            if (String(currentUserId) === String(freelancerId)) {
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new Event("profile-updated"));
+              }
+            }
+          }
+        }
+      }
     } finally {
       setWorkflowBusyAction(null);
     }

@@ -18,9 +18,6 @@ const Navbar = () => {
   const displayName = profile?.full_name || session?.user?.email || null;
   const isFreelancer = String(profile?.role || "").toLowerCase() === "freelance";
 
-  // เช็คว่าเป็น Freelance หรือไม่
-  const isFreelance = profile?.role === "freelance";
-
   return (
     <nav className="fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-6xl bg-white rounded-full drop-shadow-xl z-100 pointer-events-auto">
       <div className="flex justify-between items-center py-4 px-8">
@@ -40,22 +37,6 @@ const Navbar = () => {
           <li className="font-semibold hover:text-orange-500 transition-colors">
             <Link to="/product">PRODUCT</Link>
           </li>
-
-          {/* --- ส่วนที่เพิ่มเข้ามา --- */}
-          {isLoggedIn && isFreelance && (
-            <li className="font-semibold hover:text-orange-500 transition-colors">
-              <Link
-                to="/freelance"
-                activeProps={{
-                  className:
-                    "text-orange-600 underline decoration-2 underline-offset-4"
-                }}
-              >
-                DASHBOARD
-              </Link>
-            </li>
-          )}
-          {/* ----------------------- */}
 
           <li className="font-semibold hover:text-orange-500 transition-colors">
             <Link to="/service">SERVICE</Link>

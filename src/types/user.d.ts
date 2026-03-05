@@ -19,6 +19,7 @@ export type Profile = {
   role: UserRole;
   created_at: string;
   address?: string | null;
+  earning?: number; // Add earning property for freelancer
 };
 
 export interface FreelanceProfile extends Profile {

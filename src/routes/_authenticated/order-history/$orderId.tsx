@@ -248,16 +248,33 @@ function RouteComponent() {
               Back to Order History
             </button>
             {detail.status !== "delivered" && (
-              <button
-                type="button"
-                onClick={() => {
-                  useOrderStore.getState().setActiveOrderId(detail.orderId);
-                  router.navigate({ to: "/payment" });
-                }}
-                className="px-5 py-2 rounded-lg bg-blue-100 text-blue-700 font-black hover:bg-blue-200"
-              >
-                Open Live Tracking
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    useOrderStore.getState().setActiveOrderId(detail.orderId);
+                    router.navigate({ to: "/payment" });
+                  }}
+                  className="px-5 py-2 rounded-lg bg-blue-100 text-blue-700 font-black hover:bg-blue-200"
+                >
+                  Open Live Tracking
+                </button>
+                {detail.status !== "cancelled" && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await supabase
+                        .from("orders")
+                        .update({ status: "cancelled" })
+                        .eq("order_id", detail.orderId);
+                      window.location.reload();
+                    }}
+                    className="px-5 py-2 rounded-lg bg-red-100 text-red-700 font-black hover:bg-red-200"
+                  >
+                    Cancel Delivery
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
