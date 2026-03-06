@@ -159,6 +159,7 @@ function RouteComponent() {
     }
 
     if (order_id) {
+      const toastId = toast.loading("Completing Purchase...");
       try {
         setIsSubmitting(true);
         const mappedMethod = (paymentMethod || "card").toUpperCase();
@@ -176,6 +177,7 @@ function RouteComponent() {
         if (functionError) throw functionError;
         if (!data?.success) throw new Error(data?.message || "Payment failed");
 
+        toast.dismiss(toastId);
         toast.success("Payment successful!");
         router.navigate({
           to: "/order-complete" as any,
@@ -185,6 +187,7 @@ function RouteComponent() {
           } as any
         });
       } catch (err: any) {
+        toast.dismiss(toastId);
         toast.error("Payment failed: " + err.message);
       } finally {
         setIsSubmitting(false);

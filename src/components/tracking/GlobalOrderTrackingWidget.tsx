@@ -72,10 +72,11 @@ function GlobalOrderTrackingWidget() {
   };
 
   const getOngoingOrderIds = useCallback(
-    async (excludedOrderIds: string[] = []) => {
+    async (excludedOrderIds: string[] = [], force = false) => {
       if (isFetchingOngoingRef.current) return null;
       const now = Date.now();
       if (
+        !force &&
         excludedOrderIds.length === 0 &&
         now - lastOngoingFetchTimeRef.current < 3000
       ) {
@@ -342,6 +343,23 @@ function GlobalOrderTrackingWidget() {
     },
     [getOngoingOrderIds]
   );
+
+  const handleManualRefresh = async () => {
+    try {
+      setLoading(true);
+      // Force refresh ongoing list
+      await getOngoingOrderIds([], true);
+
+      // Refresh current tracking if exists
+      if (activeOrderId) {
+        await loadTracking(activeOrderId);
+      }
+    } catch (err) {
+      toast.error("Failed to refresh");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isPaymentConfirmPage) return;
@@ -686,9 +704,7 @@ function GlobalOrderTrackingWidget() {
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => {
-                  if (activeOrderId) loadTracking(activeOrderId);
-                }}
+                onClick={handleManualRefresh}
                 disabled={loading}
                 className="flex-1 px-3 py-2 rounded-lg bg-[#A03F00] text-white text-xs font-black disabled:bg-gray-300 hover:bg-[#8a3600] transition-colors"
               >
