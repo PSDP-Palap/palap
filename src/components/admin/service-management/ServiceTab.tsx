@@ -14,7 +14,7 @@ import type { Service, ServiceCategory } from "@/types/service";
 import { AddServiceDialog } from "./AddServiceDialog";
 import { ServiceManagementDialog } from "./ServiceManagementDialog";
 
-export const ServiceTab = () => {
+const ServiceTab = () => {
   const {
     services,
     loadServices,
@@ -78,7 +78,7 @@ export const ServiceTab = () => {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex items-center justify-center h-full min-h-[400px]">
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex items-center justify-center h-full min-h-100">
         <Loading fullScreen={false} size={150} />
       </div>
     );
@@ -168,7 +168,9 @@ export const ServiceTab = () => {
                           <span
                             className="cursor-pointer hover:text-[#A6411C] transition-colors"
                             onClick={() => {
-                              navigator.clipboard.writeText(service.service_id!);
+                              navigator.clipboard.writeText(
+                                service.service_id!
+                              );
                               toast.success("คัดลอก ID เรียบร้อยแล้ว");
                             }}
                           >
@@ -265,7 +267,7 @@ export const ServiceTab = () => {
         </div>
 
         <ServiceManagementDialog
-          key={selectedService?.service_id! || "new"}
+          key={selectedService?.service_id || "new"}
           isOpen={!!selectedService}
           service={selectedService}
           onClose={() => setSelectedService(null)}
@@ -282,3 +284,4 @@ export const ServiceTab = () => {
     </TooltipProvider>
   );
 };
+export default ServiceTab;

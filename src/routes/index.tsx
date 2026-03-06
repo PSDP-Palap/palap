@@ -4,6 +4,7 @@ import BannerSection from "@/components/home/BannerSection";
 import HeaderSection from "@/components/home/HeaderSection";
 import RecommendSection from "@/components/home/RecommendSection";
 import ServiceSection from "@/components/home/ServiceSection";
+import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
 
 export const Route = createFileRoute("/")({
@@ -24,7 +25,8 @@ export const Route = createFileRoute("/")({
       throw redirect({ to: "/management/admin" });
     }
   },
-  component: RouteComponent
+  component: RouteComponent,
+  pendingComponent: () => <Loading />
 });
 
 function RouteComponent() {

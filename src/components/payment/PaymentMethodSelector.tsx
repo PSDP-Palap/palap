@@ -15,7 +15,7 @@ export function PaymentMethodSelector({
   setSubmitError,
   cardIcon,
   qrIcon,
-  cashIcon,
+  cashIcon
 }: PaymentMethodSelectorProps) {
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
@@ -26,30 +26,26 @@ export function PaymentMethodSelector({
         <button
           type="button"
           onClick={() => {
-            setPaymentMethod("card");
+            setPaymentMethod("CARD");
             setSubmitError(null);
           }}
           className={`rounded-lg border p-3 flex flex-col items-center gap-1 transition-colors ${
-            paymentMethod === "card"
-              ? "bg-[#FCE7D8] border-[#D9B39A]"
+            paymentMethod === "CARD"
+              ? "bg-[#FCE7D8] border-[#0d0a08]"
               : "bg-white border-gray-200 hover:bg-gray-50"
           }`}
         >
-          <img
-            src={cardIcon}
-            alt="Card"
-            className="w-12 h-12 object-contain"
-          />
+          <img src={cardIcon} alt="Card" className="w-12 h-12 object-contain" />
           <span className="text-xs text-gray-700">Card</span>
         </button>
         <button
           type="button"
           onClick={() => {
-            setPaymentMethod("qr");
+            setPaymentMethod("QR");
             setSubmitError(null);
           }}
           className={`rounded-lg border p-3 flex flex-col items-center gap-1 transition-colors ${
-            paymentMethod === "qr"
+            paymentMethod === "QR"
               ? "bg-[#FCE7D8] border-[#D9B39A]"
               : "bg-white border-gray-200 hover:bg-gray-50"
           }`}
@@ -64,20 +60,16 @@ export function PaymentMethodSelector({
         <button
           type="button"
           onClick={() => {
-            setPaymentMethod("cash");
+            setPaymentMethod("CASH");
             setSubmitError(null);
           }}
           className={`rounded-lg border p-3 flex flex-col items-center gap-1 transition-colors ${
-            paymentMethod === "cash"
+            paymentMethod === "CASH"
               ? "bg-[#FCE7D8] border-[#D9B39A]"
               : "bg-white border-gray-200 hover:bg-gray-50"
           }`}
         >
-          <img
-            src={cashIcon}
-            alt="Cash"
-            className="w-12 h-12 object-contain"
-          />
+          <img src={cashIcon} alt="Cash" className="w-12 h-12 object-contain" />
           <span className="text-xs text-gray-700">Cash</span>
         </button>
       </div>

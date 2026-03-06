@@ -1,5 +1,8 @@
-import { MapContainer, TileLayer, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+
+import { MapContainer, TileLayer, useMapEvents } from "react-leaflet";
+
+import type { SavedAddressSnapshot } from "@/types/payment";
 
 interface LocationSectionProps {
   isEditingLocation: boolean;
@@ -9,7 +12,7 @@ interface LocationSectionProps {
   detectingLocation: boolean;
   resolvingAddress: boolean;
   savingLocation: boolean;
-  savedAddress: any;
+  savedAddress: SavedAddressSnapshot | null;
   isMapExpanded: boolean;
   setIsMapExpanded: (val: boolean | ((prev: boolean) => boolean)) => void;
   locationName: string;
@@ -30,7 +33,11 @@ interface LocationSectionProps {
   mapSrc: string;
 }
 
-function MapCenterTracker({ onCenterChange }: { onCenterChange: (lat: number, lng: number) => void }) {
+function MapCenterTracker({
+  onCenterChange
+}: {
+  onCenterChange: (lat: number, lng: number) => void;
+}) {
   const map = useMapEvents({
     moveend: () => {
       const center = map.getCenter();
@@ -39,7 +46,7 @@ function MapCenterTracker({ onCenterChange }: { onCenterChange: (lat: number, ln
     zoomend: () => {
       const center = map.getCenter();
       onCenterChange(center.lat, center.lng);
-    },
+    }
   });
   return null;
 }
@@ -70,7 +77,7 @@ export function LocationSection({
   toNumber,
   saveLocation,
   locationError,
-  mapSrc,
+  mapSrc
 }: LocationSectionProps) {
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
@@ -150,7 +157,7 @@ export function LocationSection({
             />
           </div>
           <div
-            className={`rounded-md overflow-hidden border border-gray-200 relative ${isMapExpanded ? "h-[420px]" : "h-44"}`}
+            className={`rounded-md overflow-hidden border border-gray-200 relative ${isMapExpanded ? "h-105" : "h-44"}`}
           >
             <MapContainer
               bounds={mapLeafletBounds}
@@ -160,7 +167,7 @@ export function LocationSection({
               <MapCenterTracker onCenterChange={updateLocationFromMapCenter} />
             </MapContainer>
 
-            <div className="absolute inset-0 z-[1000] pointer-events-none flex items-center justify-center">
+            <div className="absolute inset-0 z-1000 pointer-events-none flex items-center justify-center">
               <div className="relative w-14 h-14 flex items-center justify-center">
                 <div className="absolute top-1/2 left-0 right-0 h-px bg-black/20" />
                 <div className="absolute left-1/2 top-0 bottom-0 w-px bg-black/20" />

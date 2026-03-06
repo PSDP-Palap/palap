@@ -1,28 +1,4 @@
-export type PaymentMethod = "card" | "qr" | "cash";
-
-export interface Address {
-  id: string;
-  name?: string | null;
-  address_detail?: string | null;
-  lat?: number | null;
-  lng?: number | null;
-}
-
-export interface DeliveryTracking {
-  orderId: string;
-  serviceId: string | null;
-  roomId: string | null;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  price: number;
-  productName: string;
-  pickupAddress: Address | null;
-  destinationAddress: Address | null;
-  freelanceName: string;
-  freelanceId: string | null;
-  freelanceAvatarUrl: string | null;
-}
+export type PaymentMethod = "CARD" | "QR" | "CASH";
 
 export interface SavedAddressSnapshot {
   id: string;
@@ -30,4 +6,24 @@ export interface SavedAddressSnapshot {
   detail: string;
   lat: string;
   lng: string;
+}
+
+export interface Transaction {
+  id: string;
+  order_id: string | null;
+  customer_id: string | null;
+  amount: number;
+  payment_method: string;
+  status: string;
+  created_at: string;
+}
+
+export interface FreelanceEarning {
+  id: string;
+  order_id: string | null;
+  freelance_id: string | null;
+  amount: number;
+  status: string;
+  paid_at: string | null;
+  created_at: string;
 }

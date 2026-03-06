@@ -1,39 +1,47 @@
-import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import supabase from "@/utils/supabase";
 import { Search } from "lucide-react";
+import { useEffect, useState } from "react";
 
-import { useCartStore } from "@/stores/useCartStore";
-
-import { ProductCard } from "@/components/product/ProductCard";
 import { CartFooter } from "@/components/product/CartFooter";
+import { ProductCard } from "@/components/product/ProductCard";
+import Loading from "@/components/shared/Loading";
+import { useCartStore } from "@/stores/useCartStore";
 import type { Product } from "@/types/product";
+import supabase from "@/utils/supabase";
+
+interface RawProductRow {
+  product_id: string;
+  name: string;
+  price: number;
+  qty: number;
+  image_url: string | null;
+  created_at: string;
+  pickup_address_id: string | null;
+}
 
 export const Route = createFileRoute("/product/")({
   loader: async () => {
-    console.log("[Router] Product loader started");
-    
     // Direct query without withTimeout, similar to AdminTab fetch pattern
     const { data, error } = await supabase
       .from("products")
-      .select("product_id, name, price, qty, image_url")
+      .select("product_id, name, price, qty, image_url, created_at, pickup_address_id")
       .order("name", { ascending: true })
       .limit(100);
 
     if (error) {
-      console.error("[Router] Supabase error fetching products:", error);
       throw error;
     }
 
-    console.log("[Router] Product loader finished, count:", data?.length);
-
-    const products: Product[] = (data || []).map((item: any) => ({
+    const rawData = (data as unknown as RawProductRow[]) || [];
+    const products: Product[] = rawData.map((item) => ({
       id: String(item.product_id),
-      product_id: item.product_id,
-      name: item.name,
-      price: item.price,
-      qty: item.qty,
-      image_url: item.image_url
+      product_id: String(item.product_id),
+      name: String(item.name),
+      price: Number(item.price || 0),
+      qty: Number(item.qty || 0),
+      image_url: item.image_url || null,
+      created_at: String(item.created_at),
+      pickup_address_id: item.pickup_address_id || null
     }));
 
     return { products };
@@ -53,13 +61,8 @@ export const Route = createFileRoute("/product/")({
     </div>
   ),
   pendingComponent: () => (
-    <div className="min-h-screen bg-[#F9E6D8] flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-12 h-12 border-4 border-[#D35400] border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-[#D35400] font-bold animate-pulse">
-          Loading Products...
-        </p>
-      </div>
+    <div className="min-h-screen bg-[#F9E6D8] flex items-center justify-center pt-24">
+      <Loading fullScreen={false} size={150} />
     </div>
   )
 });
@@ -122,7 +125,7 @@ function RouteComponent() {
   return (
     <div className="min-h-screen bg-[#F9E6D8] font-sans pb-32">
       <main className="max-w-6xl mx-auto p-6 pt-28">
-        <div className="bg-[#FF914D] rounded-2xl p-8 mb-8 relative overflow-hidden flex justify-between items-center shadow-lg border-b-4 border-orange-600/20">
+        <div className="flex items-center pl-8 bg-[#FF914D] rounded-2xl mb-8 relative overflow-hidden shadow-lg">
           <div className="z-10">
             <h1 className="text-3xl font-black text-white uppercase">
               SELECT PRODUCTS
@@ -131,6 +134,7 @@ function RouteComponent() {
               High quality supplies for your pet
             </p>
           </div>
+          <img src="/cat.png" alt="cat" className="ml-auto" />
         </div>
 
         <div className="mb-8 bg-white rounded-xl border border-orange-200 p-2 shadow-sm flex items-center gap-2">

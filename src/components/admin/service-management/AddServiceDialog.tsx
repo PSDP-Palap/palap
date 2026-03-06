@@ -1,14 +1,16 @@
-import { useState, useRef } from "react";
-import type { Service, ServiceCategory } from "@/types/service";
+import { useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { useServiceStore } from "@/stores/useServiceStore";
+
+import Loading from "@/components/shared/Loading";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select";
+import { useServiceStore } from "@/stores/useServiceStore";
+import type { Service, ServiceCategory } from "@/types/service";
 
 interface AddServiceDialogProps {
   isOpen: boolean;
@@ -31,8 +33,8 @@ export const AddServiceDialog = ({
     name: "",
     price: 0,
     category: "SHOPPING",
-    pickup_address: "",
-    dest_address: "",
+    pickup_address_id: "",
+    destination_address_id: "",
     image_url: "",
     detail_1: "",
     detail_2: ""
@@ -41,7 +43,9 @@ export const AddServiceDialog = ({
   if (!isOpen) return null;
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
   ) => {
     const { name, value } = e.target;
     setForm((prev) => ({
@@ -87,14 +91,14 @@ export const AddServiceDialog = ({
 
       await onSuccess({ ...form, image_url: finalImageUrl });
       toast.success("เพิ่มบริการเรียบร้อยแล้ว", { id: loadingToast });
-      
+
       // Reset
       setForm({
         name: "",
         price: 0,
         category: "SHOPPING",
-        pickup_address: "",
-        dest_address: "",
+        pickup_address_id: "",
+        destination_address_id: "",
         image_url: "",
         detail_1: "",
         detail_2: ""
@@ -103,6 +107,7 @@ export const AddServiceDialog = ({
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl("");
       onClose();
+      // eslint-disable-next-line unused-imports/no-unused-vars
     } catch (error) {
       toast.error("เกิดข้อผิดพลาดในการเพิ่มบริการ", { id: loadingToast });
     } finally {
@@ -165,11 +170,11 @@ export const AddServiceDialog = ({
               <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block self-start mb-1">
                 Service Image
               </label>
-              <div 
+              <div
                 onClick={() => fileInputRef.current?.click()}
                 className={`relative w-full h-48 rounded-2xl border-2 border-dashed transition-all flex items-center justify-center overflow-hidden cursor-pointer group ${
-                  previewUrl 
-                    ? "border-orange-100 hover:border-orange-300" 
+                  previewUrl
+                    ? "border-orange-100 hover:border-orange-300"
                     : "border-gray-200 hover:border-orange-300 bg-gray-50 hover:bg-orange-50/30"
                 }`}
               >
@@ -202,15 +207,19 @@ export const AddServiceDialog = ({
                         d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                       />
                     </svg>
-                    <span className="text-sm font-bold">คลิกเพื่อเลือกรูปภาพ</span>
+                    <span className="text-sm font-bold">
+                      คลิกเพื่อเลือกรูปภาพ
+                    </span>
                   </div>
                 )}
-                
-                {isSubmitting && selectedFile && (
+
+                {isSubmitting && (
                   <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
                     <div className="flex flex-col items-center gap-2">
-                      <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs font-bold text-orange-600">กำลังอัพโหลด...</span>
+                      <Loading fullScreen={false} size={40} />
+                      <span className="text-xs font-bold text-orange-600">
+                        กำลังอัพโหลด...
+                      </span>
                     </div>
                   </div>
                 )}
@@ -261,7 +270,10 @@ export const AddServiceDialog = ({
                 <Select
                   value={form.category}
                   onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, category: value as ServiceCategory }))
+                    setForm((prev) => ({
+                      ...prev,
+                      category: value as ServiceCategory
+                    }))
                   }
                 >
                   <SelectTrigger className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-3 h-auto text-sm focus:ring-2 focus:ring-orange-500 transition-all">
@@ -277,13 +289,29 @@ export const AddServiceDialog = ({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Detail 1</label>
-              <textarea name="detail_1" value={form.detail_1 || ""} onChange={handleChange} placeholder="รายละเอียดเพิ่มเติมส่วนที่ 1" className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 min-h-[80px]" />
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                Detail 1
+              </label>
+              <textarea
+                name="detail_1"
+                value={form.detail_1 || ""}
+                onChange={handleChange}
+                placeholder="รายละเอียดเพิ่มเติมส่วนที่ 1"
+                className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 min-h-20"
+              />
             </div>
 
             <div>
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Detail 2</label>
-              <textarea name="detail_2" value={form.detail_2 || ""} onChange={handleChange} placeholder="รายละเอียดเพิ่มเติมส่วนที่ 2" className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 min-h-[80px]" />
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                Detail 2
+              </label>
+              <textarea
+                name="detail_2"
+                value={form.detail_2 || ""}
+                onChange={handleChange}
+                placeholder="รายละเอียดเพิ่มเติมส่วนที่ 2"
+                className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 min-h-20"
+              />
             </div>
 
             <div className="pt-6">

@@ -50,7 +50,9 @@ const RegisterForm = () => {
         return;
       }
 
-      toast.success("Account created! Please check your email.", { id: loadingToast });
+      toast.success("Account created! Please check your email.", {
+        id: loadingToast
+      });
       setTimeout(() => {
         router.navigate({ to: "/sign-in" });
       }, 2000);
@@ -104,7 +106,7 @@ const RegisterForm = () => {
             onChange={(e) => setEmail(e.target.value)}
             required
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-300"
-            placeholder="example@mail.com"
+            placeholder="example@gmail.com"
           />
         </div>
         <div className="space-y-1">

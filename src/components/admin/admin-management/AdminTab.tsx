@@ -15,7 +15,7 @@ import { AddAdminDialog } from "./AddAdminDialog";
 import { DeleteAdminDialog } from "./DeleteAdminDialog";
 import { EditAdminDialog } from "./EditAdminDialog";
 
-export const AdminTab = () => {
+const AdminTab = () => {
   const [admins, setAdmins] = useState<Profile[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -81,7 +81,7 @@ export const AdminTab = () => {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex items-center justify-center h-full min-h-[400px]">
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex items-center justify-center h-full min-h-100">
         <Loading fullScreen={false} size={150} />
       </div>
     );
@@ -303,3 +303,5 @@ export const AdminTab = () => {
     </TooltipProvider>
   );
 };
+
+export default AdminTab;

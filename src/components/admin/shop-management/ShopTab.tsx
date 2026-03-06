@@ -14,7 +14,7 @@ import type { Product } from "@/types/product";
 import { AddProductDialog } from "./AddProductDialog";
 import { ProductManagementDialog } from "./ProductManagementDialog";
 
-export const ShopTab = () => {
+const ShopTab = () => {
   const {
     products,
     isLoading,
@@ -40,7 +40,7 @@ export const ShopTab = () => {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex items-center justify-center h-full min-h-[400px]">
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex items-center justify-center h-full min-h-100">
         <Loading fullScreen={false} size={150} />
       </div>
     );
@@ -128,7 +128,9 @@ export const ShopTab = () => {
                           <span
                             className="cursor-pointer hover:text-[#A6411C] transition-colors"
                             onClick={() => {
-                              navigator.clipboard.writeText(product.product_id!);
+                              navigator.clipboard.writeText(
+                                product.product_id!
+                              );
                               toast.success("คัดลอก ID เรียบร้อยแล้ว");
                             }}
                           >
@@ -219,7 +221,7 @@ export const ShopTab = () => {
         </div>
 
         <ProductManagementDialog
-          key={selectedProduct?.product_id! || "new"}
+          key={selectedProduct?.product_id || "new"}
           isOpen={!!selectedProduct}
           product={selectedProduct}
           onClose={() => setSelectedProduct(null)}
@@ -236,3 +238,4 @@ export const ShopTab = () => {
     </TooltipProvider>
   );
 };
+export default ShopTab;

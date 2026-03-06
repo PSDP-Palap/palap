@@ -22,8 +22,8 @@ export function ProductCard({
       <div
         onClick={() => {
           router.navigate({
-            to: "/product/$id",
-            params: { id: product.id || product.product_id || "" }
+            to: "/product/$product_id",
+            params: { product_id: product.id || product.product_id || "" }
           });
         }}
         className={`bg-white ${roundedClassName} p-5 shadow-sm transition-all cursor-pointer border-2 h-full flex flex-col group

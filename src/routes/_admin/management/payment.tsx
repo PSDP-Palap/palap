@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PlaceholderTab } from "@/components/admin/shared/PlaceholderTab";
+
+import PaymentTab from "@/components/admin/payment-management/PaymentTab";
 
 export const Route = createFileRoute("/_admin/management/payment")({
-  component: () => <PlaceholderTab label="Payment" />
+  component: () => <PaymentTab />
 });

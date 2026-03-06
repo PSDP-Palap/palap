@@ -1,13 +1,19 @@
 const FreelanceRegisterHeader = () => {
   return (
-    <div className="flex flex-col items-center space-y-2">
-      <div className="h-16 w-16 rounded-full bg-orange-100 flex items-center justify-center text-3xl shadow-md">
-        🚐
+    <div className="flex flex-col items-center space-y-4">
+      <div className="w-20 h-20 rounded-3xl bg-orange-50 flex items-center justify-center shrink-0 shadow-sm border border-orange-100 p-3">
+        <img
+          src="/logo.png"
+          alt="Palap"
+          className="w-full h-full object-contain"
+        />
       </div>
-      <h2 className="text-xl font-extrabold tracking-wide text-slate-900">
-        BECOME A FREELANCE
-      </h2>
-      <p className="text-xs text-slate-500 text-center">Join our team and start earning with pet care services</p>
+      <div className="text-center">
+        <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">
+          Become a Freelance
+        </h2>
+        <p className="text-sm font-medium text-slate-500 mt-1">เข้าร่วมทีมเพื่อสร้างรายได้กับเรา</p>
+      </div>
     </div>
   );
 };

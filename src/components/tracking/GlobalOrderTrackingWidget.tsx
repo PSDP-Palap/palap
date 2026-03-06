@@ -1,24 +1,27 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useRouter, useRouterState } from "@tanstack/react-router";
+import { Truck, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
+import Loading from "@/components/shared/Loading";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useUserStore } from "@/stores/useUserStore";
-import type { DeliveryTracking } from "@/types/payment";
-import { getOrderIdFromSystemMessage, isCompletedOrderStatus } from "@/utils/helpers";
+import {
+  getOrderIdFromSystemMessage,
+  isCompletedOrderStatus
+} from "@/utils/helpers";
 import supabase, { isUuidLike } from "@/utils/supabase";
 
 const WAITING_STATUS_SET = new Set([
   "",
-  "waiting",
-  "pending",
-  "new",
-  "open",
-  "requested",
-  "looking_freelancer"
+  "WAITING",
+  "PENDING",
+  "NEW",
+  "OPEN",
+  "REQUESTED",
+  "LOOKING_FREELANCER"
 ]);
-const DELIVERY_DONE_PREFIX = "[SYSTEM_DELIVERY_DONE]";
 
 function GlobalOrderTrackingWidget() {
   const router = useRouter();
@@ -36,10 +39,14 @@ function GlobalOrderTrackingWidget() {
   const isInitialized = useUserStore((s) => s.isInitialized);
   const isCustomer = String(userRole || "").toLowerCase() === "customer";
 
-  const { activeOrderId, setActiveOrderId } = useOrderStore();
+  const {
+    activeOrderId,
+    setActiveOrderId,
+    activeOrderTracking: tracking,
+    setActiveOrderTracking: setTracking
+  } = useOrderStore();
 
   const [ongoingOrderIds, setOngoingOrderIds] = useState<string[]>([]);
-  const [tracking, setTracking] = useState<DeliveryTracking | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -58,14 +65,18 @@ function GlobalOrderTrackingWidget() {
     const targetOrderId = tracking?.orderId || activeOrderId;
     if (!targetOrderId || !userId) return;
     setActiveOrderId(targetOrderId);
-    router.navigate({ to: "/payment" });
+    router.navigate({
+      to: "/order/$order_id" as any,
+      params: { order_id: targetOrderId } as any
+    });
   };
 
   const getOngoingOrderIds = useCallback(
-    async (excludedOrderIds: string[] = []) => {
+    async (excludedOrderIds: string[] = [], force = false) => {
       if (isFetchingOngoingRef.current) return null;
       const now = Date.now();
       if (
+        !force &&
         excludedOrderIds.length === 0 &&
         now - lastOngoingFetchTimeRef.current < 3000
       ) {
@@ -83,7 +94,9 @@ function GlobalOrderTrackingWidget() {
 
         const { data: orderRows, error: orderError } = await supabase
           .from("orders")
-          .select("order_id, status, created_at, customer_id, freelance_id")
+          .select(
+            "order_id, status, created_at, customer_id, freelance_id, payment_id"
+          )
           .or(
             `customer_id.eq.${currentUserId},freelance_id.eq.${currentUserId}`
           )
@@ -96,8 +109,10 @@ function GlobalOrderTrackingWidget() {
 
         const { data: doneRows } = await supabase
           .from("chat_messages")
-          .select("order_id, message")
-          .like("message", `${DELIVERY_DONE_PREFIX} ORDER:%`)
+          .select("order_id, content, message_type")
+          .or(
+            "message_type.eq.SYSTEM_DELIVERY_DONE,content.like.[SYSTEM_DELIVERY_DONE] ORDER:%"
+          )
           .order("created_at", { ascending: false })
           .limit(500);
 
@@ -106,7 +121,7 @@ function GlobalOrderTrackingWidget() {
             .map((row: any) => {
               const directId = String(row?.order_id || "").trim();
               if (directId) return directId;
-              return getOrderIdFromSystemMessage(String(row?.message || ""));
+              return getOrderIdFromSystemMessage(String(row?.content || ""));
             })
             .filter(Boolean)
         );
@@ -120,7 +135,14 @@ function GlobalOrderTrackingWidget() {
           if (excludedSet.has(rowOrderId)) return false;
           if (doneOrderSet.has(rowOrderId)) return false;
 
-          const isFinished = isCompletedOrderStatus(String(row?.status || ""));
+          const rawStatus = String(row?.status || "").toUpperCase();
+          const isFinished = isCompletedOrderStatus(rawStatus, row?.payment_id);
+
+          // Allow complete status if payment is still pending
+          if (rawStatus === "COMPLETE" && !row?.payment_id) {
+            return true;
+          }
+
           if (isFinished) {
             return false;
           }
@@ -132,7 +154,7 @@ function GlobalOrderTrackingWidget() {
         lastOngoingFetchTimeRef.current = Date.now();
         setOngoingOrderIds(result);
         return result;
-      } catch (err) {
+      } catch {
         return null;
       } finally {
         isFetchingOngoingRef.current = false;
@@ -158,11 +180,10 @@ function GlobalOrderTrackingWidget() {
           setLoading(true);
         }
 
-        // FIXED: Query by order_id only. Do NOT query 'id' column as it doesn't exist in orders table.
         const { data: orderRow, error: orderError } = await supabase
           .from("orders")
           .select(
-            "order_id, service_id, customer_id, freelance_id, pickup_address_id, destination_address_id, price, status, created_at, updated_at, product_id"
+            "order_id, service_id, customer_id, freelance_id, pickup_address_id, destination_address_id, price, status, created_at, updated_at, product_id, payment_id"
           )
           .eq("order_id", orderId)
           .maybeSingle();
@@ -180,28 +201,37 @@ function GlobalOrderTrackingWidget() {
           ? String(orderRow.service_id)
           : null;
 
-        const [{ data: addressRows }, { data: productRow }] = await Promise.all(
-          [
-            [pickupAddressId, destinationAddressId].filter(Boolean).length > 0
-              ? supabase
-                  .from("addresses")
-                  .select("id, name, address_detail")
-                  .in(
-                    "id",
-                    [pickupAddressId, destinationAddressId].filter(
-                      Boolean
-                    ) as string[]
-                  )
-              : Promise.resolve({ data: [] as any[] }),
-            orderRow.product_id
-              ? supabase
-                  .from("products")
-                  .select("product_id, name")
-                  .eq("product_id", String(orderRow.product_id))
-                  .maybeSingle()
-              : Promise.resolve({ data: null as any })
-          ]
-        );
+        const [
+          { data: addressRows },
+          { data: productRow },
+          { data: serviceRow }
+        ] = await Promise.all([
+          [pickupAddressId, destinationAddressId].filter(Boolean).length > 0
+            ? supabase
+                .from("addresses")
+                .select("id, name, address_detail")
+                .in(
+                  "id",
+                  [pickupAddressId, destinationAddressId].filter(
+                    Boolean
+                  ) as string[]
+                )
+            : Promise.resolve({ data: [] as any[] }),
+          orderRow.product_id
+            ? supabase
+                .from("products")
+                .select("product_id, name")
+                .eq("product_id", String(orderRow.product_id))
+                .maybeSingle()
+            : Promise.resolve({ data: null as any }),
+          orderRow.service_id
+            ? supabase
+                .from("services")
+                .select("service_id, name")
+                .eq("service_id", String(orderRow.service_id))
+                .maybeSingle()
+            : Promise.resolve({ data: null as any })
+        ]);
 
         const normalizedFreelanceId =
           (orderRow as any)?.freelance_id ??
@@ -211,7 +241,6 @@ function GlobalOrderTrackingWidget() {
           ? String(normalizedFreelanceId)
           : null;
 
-        // Use select("*") to avoid 400 errors from missing columns like avatar_url
         const { data: freelanceProfile } =
           freelanceId && isUuidLike(freelanceId)
             ? await supabase
@@ -242,31 +271,22 @@ function GlobalOrderTrackingWidget() {
                 .maybeSingle()
             : { data: null as any };
 
-        const { data: doneMarkerRow } = await supabase
-          .from("chat_messages")
-          .select("id")
-          .eq("order_id", orderId)
-          .like("message", "[SYSTEM_DELIVERY_DONE] ORDER:%")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
         const addressMap = new Map(
           (addressRows ?? []).map((row: any) => [String(row.id), row])
         );
-        const rawStatus = String(orderRow.status || "").toLowerCase();
-        const isAssigned = !!freelanceId;
-        const hasDoneMarker = !!doneMarkerRow;
+        const rawStatus = String(orderRow.status || "").toUpperCase();
+        const nextStatus = isCompletedOrderStatus(
+          rawStatus,
+          orderRow.payment_id
+        )
+          ? "COMPLETE"
+          : rawStatus || "WAITING";
 
-        // Prefer DB status, but treat delivery-done system markers as completed fallback.
-        const nextStatus =
-          hasDoneMarker || isCompletedOrderStatus(rawStatus)
-            ? "delivered"
-            : isAssigned && WAITING_STATUS_SET.has(rawStatus)
-            ? "serving"
-            : rawStatus || (isAssigned ? "serving" : "waiting");
-
-        if (isCompletedOrderStatus(nextStatus)) {
+        // Only clear and close if it's REALLY finished (paid or marked as done)
+        if (
+          isCompletedOrderStatus(nextStatus, orderRow.payment_id) &&
+          orderRow.payment_id
+        ) {
           suppressAutoPickRef.current = true;
           useOrderStore.getState().setActiveOrderId(null);
           setTracking(null);
@@ -277,6 +297,9 @@ function GlobalOrderTrackingWidget() {
         setTracking({
           orderId: String(orderRow.order_id),
           serviceId,
+          customerId: orderRow.customer_id
+            ? String(orderRow.customer_id)
+            : null,
           roomId: roomRow?.id ? String(roomRow.id) : null,
           status: nextStatus,
           createdAt: orderRow.created_at,
@@ -293,17 +316,17 @@ function GlobalOrderTrackingWidget() {
             freelanceProfile?.image_url ||
             freelanceProfile?.photo_url ||
             null,
-          productName: productRow?.name || "Product",
+          productName: productRow?.name || serviceRow?.name || "Service",
           pickupAddress: pickupAddressId
             ? (addressMap.get(pickupAddressId) ?? null)
             : null,
           destinationAddress: destinationAddressId
             ? (addressMap.get(destinationAddressId) ?? null)
-            : null
+            : null,
+          paymentId: orderRow.payment_id
         });
         lastLoadedOrderIdRef.current = orderId;
       } catch (err) {
-        // Only clear if it's a "Not found" error and NOT a background refresh
         if (String(err).includes("Order not found")) {
           if (!isBackground) {
             setTracking(null);
@@ -318,8 +341,22 @@ function GlobalOrderTrackingWidget() {
         }
       }
     },
-    [getOngoingOrderIds]
+    [setTracking]
   );
+  const handleManualRefresh = async () => {
+    try {
+      setLoading(true);
+      await getOngoingOrderIds([], true);
+
+      if (activeOrderId) {
+        await loadTracking(activeOrderId);
+      }
+    } catch {
+      toast.error("Failed to refresh");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isPaymentConfirmPage) return;
@@ -349,7 +386,8 @@ function GlobalOrderTrackingWidget() {
     isInitialized,
     activeOrderId,
     getOngoingOrderIds,
-    setActiveOrderId
+    setActiveOrderId,
+    setTracking
   ]);
 
   useEffect(() => {
@@ -389,15 +427,13 @@ function GlobalOrderTrackingWidget() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isPaymentConfirmPage, isCustomer, activeOrderId, loadTracking]);
-
-  useEffect(() => {
-    if (isPaymentConfirmPage) return;
-    if (!isCustomer) return;
-    if (!userId || !isInitialized) return;
-
-    // Remove setInterval polling. Realtime is used instead.
-  }, [isPaymentConfirmPage, isCustomer, userId, isInitialized, activeOrderId, loadTracking, getOngoingOrderIds]);
+  }, [
+    isPaymentConfirmPage,
+    isCustomer,
+    activeOrderId,
+    loadTracking,
+    setTracking
+  ]);
 
   const handleOpenChat = async () => {
     const targetOrderId = tracking?.orderId || activeOrderId;
@@ -405,7 +441,6 @@ function GlobalOrderTrackingWidget() {
 
     try {
       setLoading(true);
-      // 1. Try to find existing room first
       let { data: room } = await supabase
         .from("chat_rooms")
         .select("id")
@@ -413,7 +448,6 @@ function GlobalOrderTrackingWidget() {
         .or(`customer_id.eq.${userId},freelancer_id.eq.${userId}`)
         .maybeSingle();
 
-      // 2. If no room, we need order info to create one
       if (!room) {
         const { data: orderRow } = await supabase
           .from("orders")
@@ -447,11 +481,28 @@ function GlobalOrderTrackingWidget() {
           "Could not start chat. Freelancer might not be assigned yet."
         );
       }
-    } catch (err: any) {
+    } catch {
       toast.error("Failed to open chat");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePay = async () => {
+    if (!tracking || !userId) return;
+    const price = tracking.price || 0;
+    const subtotal = price / 1.07;
+    const tax = price - subtotal;
+
+    router.navigate({
+      to: "/payment",
+      search: {
+        subtotal: Number(subtotal.toFixed(2)),
+        tax: Number(tax.toFixed(2)),
+        total: Number(price.toFixed(2)),
+        order_id: tracking.orderId
+      }
+    });
   };
 
   const handleTrackNextOngoingOrder = async () => {
@@ -475,16 +526,23 @@ function GlobalOrderTrackingWidget() {
     }
   };
 
-  if (!isInitialized || !userId || !isCustomer || isActiveChatPage || isPaymentConfirmPage) {
+  if (
+    !isInitialized ||
+    !userId ||
+    !isCustomer ||
+    isActiveChatPage ||
+    isPaymentConfirmPage
+  ) {
     return null;
   }
 
   const statusDisplay =
-    String(tracking?.status || "").replaceAll("_", " ") || "waiting";
+    String(tracking?.status || "").replaceAll("_", " ") || "WAITING";
   const isActuallyWaiting = tracking
     ? !tracking.freelanceId ||
-      WAITING_STATUS_SET.has(String(tracking.status || "").toLowerCase())
+      WAITING_STATUS_SET.has(String(tracking.status || "").toUpperCase())
     : true;
+  const isCompletedUnpaid = tracking?.status === "COMPLETE";
 
   return (
     <aside
@@ -512,7 +570,7 @@ function GlobalOrderTrackingWidget() {
               <span
                 className={`inline-flex px-2 py-1 rounded-full text-[10px] font-black uppercase ${isActuallyWaiting ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}
               >
-                {isActuallyWaiting ? "Waiting" : "Serving"}
+                {isActuallyWaiting ? "WAITING" : "ON_MY_WAY"}
               </span>
               <span className="text-white group-hover:translate-x-1 transition-transform">
                 →
@@ -523,7 +581,8 @@ function GlobalOrderTrackingWidget() {
           <div className="p-4 space-y-3 max-h-[52vh] overflow-y-auto text-left">
             {!tracking && loading ? (
               <div className="p-4 text-center">
-                <p className="text-sm font-bold text-orange-700 animate-pulse">
+                <Loading fullScreen={false} size={60} />
+                <p className="text-sm font-bold text-orange-700 mt-2">
                   Loading tracking...
                 </p>
               </div>
@@ -543,9 +602,29 @@ function GlobalOrderTrackingWidget() {
               </div>
             ) : (
               <>
+                {isCompletedUnpaid && (
+                  <div className="rounded-xl bg-orange-100 border border-orange-200 p-3 mb-1">
+                    <p className="text-xs font-black text-orange-800 uppercase tracking-tight mb-1">
+                      Action Required
+                    </p>
+                    <p className="text-[11px] text-orange-700 font-bold leading-tight">
+                      Freelancer has marked the work as complete. Please release
+                      the payment.
+                    </p>
+                    <button
+                      onClick={handlePay}
+                      disabled={loading}
+                      className="w-full mt-2 py-2 rounded-lg bg-[#FF914D] text-white text-xs font-black shadow-md hover:bg-[#e67e3d] transition-all disabled:bg-gray-300"
+                    >
+                      {loading
+                        ? "Processing..."
+                        : "Pay Now ฿ " + tracking.price.toFixed(2)}
+                    </button>
+                  </div>
+                )}
                 <div className="rounded-lg border border-orange-200 bg-white p-3 text-xs space-y-1">
                   <p>
-                    <span className="text-gray-500">Product:</span>{" "}
+                    <span className="text-gray-500">Service:</span>{" "}
                     <span className="font-bold">{tracking.productName}</span>
                   </p>
                   <p>
@@ -554,11 +633,15 @@ function GlobalOrderTrackingWidget() {
                   </p>
                   <p>
                     <span className="text-gray-500">Status:</span>{" "}
-                    <span className="font-bold">{statusDisplay}</span>
+                    <span className="font-bold text-orange-700 uppercase">
+                      {statusDisplay}
+                    </span>
                   </p>
                   <p>
-                    <span className="text-gray-500">Updated:</span>{" "}
-                    {new Date(tracking.updatedAt).toLocaleString()}
+                    <span className="text-gray-500">Price:</span>{" "}
+                    <span className="font-bold">
+                      ฿ {tracking.price.toFixed(2)}
+                    </span>
                   </p>
                 </div>
                 <div className="rounded-lg border border-orange-200 bg-white p-3 text-xs space-y-2">
@@ -620,32 +703,12 @@ function GlobalOrderTrackingWidget() {
                   ))
                 )}
               </div>
-              {ongoingOrderIds.length > 4 && (
-                <p className="text-[10px] text-gray-500">
-                  Scroll to see more active orders.
-                </p>
-              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => {
-                  router.navigate({
-                    to: "/payment",
-                    hash: "#order-history"
-                  });
-                  setOpen(false);
-                }}
-                className="flex-1 px-3 py-2 rounded-lg bg-orange-100 text-[#A03F00] text-xs font-black hover:bg-orange-200 transition-colors"
-              >
-                Order History
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (activeOrderId) loadTracking(activeOrderId);
-                }}
+                onClick={handleManualRefresh}
                 disabled={loading}
                 className="flex-1 px-3 py-2 rounded-lg bg-[#A03F00] text-white text-xs font-black disabled:bg-gray-300 hover:bg-[#8a3600] transition-colors"
               >
@@ -668,9 +731,13 @@ function GlobalOrderTrackingWidget() {
         <button
           type="button"
           onClick={() => setOpen((prev) => !prev)}
-          className="w-14 h-14 rounded-full bg-[#D35400] hover:bg-[#b34700] text-white shadow-xl border border-orange-300 font-black text-lg flex items-center justify-center transition-transform active:scale-95"
+          className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#D35400] hover:bg-[#b34700] text-white shadow-2xl flex items-center justify-center transition-transform active:scale-95"
         >
-          {open ? "×" : "🚚"}
+          {open ? (
+            <X className="w-7 h-7 md:w-8 md:h-8" />
+          ) : (
+            <Truck className="w-7 h-7 md:w-8 md:h-8" />
+          )}
         </button>
       </div>
     </aside>

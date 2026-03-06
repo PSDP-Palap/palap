@@ -2,6 +2,7 @@
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 
+import Loading from "@/components/shared/Loading";
 import {
   Select,
   SelectContent,
@@ -43,8 +44,8 @@ export const ServiceManagementDialog = ({
     name: service?.name || "",
     price: service?.price || 0,
     category: service?.category || "SHOPPING",
-    pickup_address: service?.pickup_address || "",
-    dest_address: service?.dest_address || "",
+    pickup_address_id: service?.pickup_address_id || "",
+    destination_address_id: service?.destination_address_id || "",
     image_url: service?.image_url || "",
     detail_1: service?.detail_1 || "",
     detail_2: service?.detail_2 || ""
@@ -94,7 +95,10 @@ export const ServiceManagementDialog = ({
         finalImageUrl = await uploadServiceImage(selectedFile);
       }
 
-      await onUpdate(service.service_id!, { ...form, image_url: finalImageUrl });
+      await onUpdate(service.service_id!, {
+        ...form,
+        image_url: finalImageUrl
+      });
       toast.success("บันทึกข้อมูลเรียบร้อยแล้ว", { id: loadingToast });
       setIsEditing(false);
       setSelectedFile(null);
@@ -214,7 +218,7 @@ export const ServiceManagementDialog = ({
                 {isSubmitting && selectedFile && (
                   <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
                     <div className="flex flex-col items-center gap-2">
-                      <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                      <Loading fullScreen={false} size={40} />
                       <span className="text-xs font-bold text-orange-600">
                         กำลังอัพโหลด...
                       </span>
@@ -370,7 +374,7 @@ export const ServiceManagementDialog = ({
                     name="detail_1"
                     value={form.detail_1 || ""}
                     onChange={handleChange}
-                    className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 min-h-[80px]"
+                    className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 min-h-20"
                   />
                 </div>
 
@@ -382,7 +386,7 @@ export const ServiceManagementDialog = ({
                     name="detail_2"
                     value={form.detail_2 || ""}
                     onChange={handleChange}
-                    className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 min-h-[80px]"
+                    className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 min-h-20"
                   />
                 </div>
 

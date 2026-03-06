@@ -3,8 +3,12 @@ import { useRouter, useRouterState } from "@tanstack/react-router";
 import { MessageCircle, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
-import { cleanPreviewMessage, isSystemMessage, withTimeout } from "@/utils/helpers";
+import {
+  cleanPreviewMessage,
+  withTimeout
+} from "@/utils/helpers";
 import supabase, { isUuidLike } from "@/utils/supabase";
 
 interface ConversationItem {
@@ -37,7 +41,9 @@ const resolveOrderFreelancerId = (order: any) =>
 
 const FloatingChatWidget = () => {
   const router = useRouter();
-  const { pathname } = useRouterState({ select: (s) => ({ pathname: s.location.pathname }) });
+  const { pathname } = useRouterState({
+    select: (s) => ({ pathname: s.location.pathname })
+  });
   const { profile, session, isInitialized } = useUserStore();
   const userId = profile?.id || session?.user?.id || null;
 
@@ -53,7 +59,8 @@ const FloatingChatWidget = () => {
   const lastLoadTimeRef = useRef(0);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const isCheckoutFooterPage = pathname === "/order-summary" || pathname === "/payment";
+  const isCheckoutFooterPage =
+    pathname === "/order-summary" || pathname === "/payment";
   const activeChatPrefix = useMemo(() => {
     if (pathname.startsWith("/freelance/chat/")) return "/freelance/chat/";
     if (pathname.startsWith("/chat/")) return "/chat/";
@@ -104,7 +111,7 @@ const FloatingChatWidget = () => {
 
         const next = {
           ...prev,
-          [normalizedRoomId]: seenAt,
+          [normalizedRoomId]: seenAt
         };
         persistReadMap(next);
         return next;
@@ -252,7 +259,7 @@ const FloatingChatWidget = () => {
             const candidateOrderMap = new Map(
               ((candidateOrderRows as any[]) ?? []).map((row: any) => [
                 String(row.order_id || ""),
-                row,
+                row
               ])
             );
 
@@ -275,7 +282,10 @@ const FloatingChatWidget = () => {
             let candidateProfileRows: any[] = [];
             if (candidatePartnerIds.length > 0) {
               const profileResult = await withTimeout(
-                supabase.from("profiles").select("*").in("id", candidatePartnerIds),
+                supabase
+                  .from("profiles")
+                  .select("*")
+                  .in("id", candidatePartnerIds),
                 12000
               );
 
@@ -293,12 +303,14 @@ const FloatingChatWidget = () => {
                     12000
                   );
 
-                  candidateProfileRows =
-                    ((fallbackProfileResult.data as any[]) ?? []).filter(Boolean);
+                  candidateProfileRows = (
+                    (fallbackProfileResult.data as any[]) ?? []
+                  ).filter(Boolean);
                 }
               } else {
-                candidateProfileRows =
-                  ((profileResult.data as any[]) ?? []).filter(Boolean);
+                candidateProfileRows = (
+                  (profileResult.data as any[]) ?? []
+                ).filter(Boolean);
               }
             }
 
@@ -336,13 +348,13 @@ const FloatingChatWidget = () => {
         }
 
         // Keep rows even if room ids are non-UUID in some environments.
-        const roomRows = (rooms as any[]).filter((r) => String(r.id || "").length > 0);
+        const roomRows = (rooms as any[]).filter(
+          (r) => String(r.id || "").length > 0
+        );
         const roomIds = roomRows.map((item) => String(item.id));
         const orderIds = Array.from(
           new Set(
-            roomRows
-              .map((row) => String(row?.order_id || ""))
-              .filter(Boolean)
+            roomRows.map((row) => String(row?.order_id || "")).filter(Boolean)
           )
         );
 
@@ -359,31 +371,37 @@ const FloatingChatWidget = () => {
         const orderMap = new Map(
           ((orderRows as any[]) ?? []).map((row: any) => [
             String(row.order_id || ""),
-            row,
+            row
           ])
         );
 
-        const { data: messageRows } = roomIds.length > 0
-          ? await withTimeout(
-              supabase
-                .from("chat_messages")
-                .select("room_id, message, created_at, sender_id")
-                .in("room_id", roomIds)
-                .order("created_at", { ascending: false }),
-              12000
-            )
-          : { data: [] as any[] };
+        const { data: messageRows } =
+          roomIds.length > 0
+            ? await withTimeout(
+                supabase
+                  .from("chat_messages")
+                  .select("room_id, content, created_at, sender_id, message_type")
+                  .in("room_id", roomIds)
+                  .order("created_at", { ascending: false }),
+                12000
+              )
+            : { data: [] as any[] };
 
-        const latestMessageByRoom = new Map<string, { message: string; created_at: string }>();
+        const latestMessageByRoom = new Map<
+          string,
+          { content: string; created_at: string; message_type: string }
+        >();
         const latestNonSelfSenderByRoom = new Map<string, string>();
         (messageRows ?? []).forEach((row: any) => {
           const key = String(row.room_id);
           if (latestMessageByRoom.has(key)) return;
-          if (isSystemMessage(row.message)) return;
+          const upperType = String(row.message_type || "").toUpperCase();
+          if (upperType.startsWith("SYSTEM_")) return;
 
           latestMessageByRoom.set(key, {
-            message: row.message ?? "",
+            content: row.content ?? "",
             created_at: row.created_at,
+            message_type: upperType
           });
 
           const senderId = String(row.sender_id || "");
@@ -403,7 +421,9 @@ const FloatingChatWidget = () => {
             resolveCustomerId(room) || resolveOrderCustomerId(orderRow);
           const freelancerId =
             resolveFreelancerId(room) || resolveOrderFreelancerId(orderRow);
-          const senderFallbackId = latestNonSelfSenderByRoom.get(String(room.id));
+          const senderFallbackId = latestNonSelfSenderByRoom.get(
+            String(room.id)
+          );
 
           [customerId, freelancerId, senderFallbackId].forEach((value) => {
             const id = String(value || "");
@@ -414,7 +434,10 @@ const FloatingChatWidget = () => {
 
         let profileRows = resolvedProfileRows;
         const missingPartnerIds = Array.from(fallbackPartnerIds).filter(
-          (id) => !profileRows.some((profile: any) => String(profile?.id || "") === id)
+          (id) =>
+            !profileRows.some(
+              (profile: any) => String(profile?.id || "") === id
+            )
         );
 
         if (missingPartnerIds.length > 0) {
@@ -430,21 +453,28 @@ const FloatingChatWidget = () => {
 
             if (uuidOnlyPartnerIds.length > 0) {
               const uuidProfileResult = await withTimeout(
-                supabase.from("profiles").select("*").in("id", uuidOnlyPartnerIds),
+                supabase
+                  .from("profiles")
+                  .select("*")
+                  .in("id", uuidOnlyPartnerIds),
                 12000
               );
 
               if (!uuidProfileResult.error) {
                 profileRows = [
                   ...profileRows,
-                  ...(((uuidProfileResult.data as any[]) ?? []).filter(Boolean) as any[]),
+                  ...(((uuidProfileResult.data as any[]) ?? []).filter(
+                    Boolean
+                  ) as any[])
                 ];
               }
             }
           } else {
             profileRows = [
               ...profileRows,
-              ...(((extraProfileResult.data as any[]) ?? []).filter(Boolean) as any[]),
+              ...(((extraProfileResult.data as any[]) ?? []).filter(
+                Boolean
+              ) as any[])
             ];
           }
         }
@@ -456,8 +486,9 @@ const FloatingChatWidget = () => {
             String(item.id),
             {
               name: item.full_name || item.email || "User",
-              avatarUrl: item.avatar_url || item.image_url || item.photo_url || null,
-            },
+              avatarUrl:
+                item.avatar_url || item.image_url || item.photo_url || null
+            }
           ])
         );
 
@@ -486,23 +517,30 @@ const FloatingChatWidget = () => {
             partnerId,
             partnerName:
               partner?.name ||
-              (isCurrentUserCustomer
-                ? "Freelancer"
-                : "Customer"),
+              (isCurrentUserCustomer ? "Freelancer" : "Customer"),
             partnerAvatarUrl: partner?.avatarUrl || null,
             customerName: customer?.name || "Customer",
             customerAvatarUrl: customer?.avatarUrl || null,
             freelancerName: freelancer?.name || "Freelancer",
             freelancerAvatarUrl: freelancer?.avatarUrl || null,
-            lastMessage: cleanPreviewMessage(latest?.message),
-            lastAt: latest?.created_at || item.last_message_at || new Date().toISOString(),
-            serviceName: "Order Chat",
+            lastMessage:
+              latest?.message_type === "IMAGE"
+                ? "Image"
+                : cleanPreviewMessage(latest?.content, latest?.message_type),
+            lastAt:
+              latest?.created_at ||
+              item.last_message_at ||
+              new Date().toISOString(),
+            serviceName: "Order Chat"
           };
         });
 
         const mergedMap = new Map<string, ConversationItem>();
         mapped
-          .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
+          .sort(
+            (a, b) =>
+              new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()
+          )
           .forEach((item) => {
             if (!mergedMap.has(item.roomId)) {
               mergedMap.set(item.roomId, item);
@@ -574,7 +612,10 @@ const FloatingChatWidget = () => {
       if (fetchUnlockTimer) {
         window.clearTimeout(fetchUnlockTimer);
       }
-      window.removeEventListener("service-chat-updated", handleExternalChatUpdate);
+      window.removeEventListener(
+        "service-chat-updated",
+        handleExternalChatUpdate
+      );
       supabase.removeChannel(channel);
     };
   }, [userId, isInitialized]);
@@ -582,12 +623,13 @@ const FloatingChatWidget = () => {
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return conversations;
-    return conversations.filter((item) =>
-      item.customerName.toLowerCase().includes(query) ||
-      item.freelancerName.toLowerCase().includes(query) ||
-      item.partnerName.toLowerCase().includes(query) ||
-      item.serviceName.toLowerCase().includes(query) ||
-      item.lastMessage.toLowerCase().includes(query)
+    return conversations.filter(
+      (item) =>
+        item.customerName.toLowerCase().includes(query) ||
+        item.freelancerName.toLowerCase().includes(query) ||
+        item.partnerName.toLowerCase().includes(query) ||
+        item.serviceName.toLowerCase().includes(query) ||
+        item.lastMessage.toLowerCase().includes(query)
     );
   }, [conversations, search]);
 
@@ -625,18 +667,22 @@ const FloatingChatWidget = () => {
   function formatTime(isoString: string) {
     const date = new Date(isoString);
     if (isNaN(date.getTime())) return "";
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
   }
 
   return (
     <div
       ref={rootRef}
-      className={`fixed right-4 md:right-6 z-[60] transition-all duration-300 ${
-        isCheckoutFooterPage ? "bottom-[164px] md:bottom-[88px]" : "bottom-20"
+      className={`fixed right-4 mb-2 md:right-6 z-60 transition-all duration-300 ${
+        isCheckoutFooterPage ? "bottom-41 md:bottom-22" : "bottom-20"
       }`}
     >
       {open && (
-        <div className="mb-4 w-80 md:w-96 rounded-2xl border border-orange-100 bg-white shadow-2xl overflow-hidden flex flex-col max-h-[500px]">
+        <div className="mb-4 w-80 md:w-96 rounded-2xl border border-orange-100 bg-white shadow-2xl overflow-hidden flex flex-col max-h-125">
           <div className="bg-[#FF914D] p-4 flex items-center justify-between text-white">
             <h3 className="font-black text-lg">Messages</h3>
             <button
@@ -663,8 +709,10 @@ const FloatingChatWidget = () => {
           <div className="flex-1 overflow-y-auto">
             {loading && !hasLoadedOnce && conversations.length === 0 ? (
               <div className="p-8 text-center">
-                <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                <p className="text-sm text-gray-500 font-medium">Loading messages...</p>
+                <Loading fullScreen={false} size={60} />
+                <p className="text-sm text-gray-500 font-medium">
+                  Loading messages...
+                </p>
               </div>
             ) : filteredConversations.length === 0 ? (
               <div className="p-8 text-center text-gray-400">
@@ -682,19 +730,19 @@ const FloatingChatWidget = () => {
                       if (profile?.role === "freelance") {
                         router.navigate({
                           to: "/chat/$id",
-                          params: { id: item.roomId },
+                          params: { id: item.roomId }
                         });
                         return;
                       }
 
                       router.navigate({
                         to: "/chat/$id",
-                        params: { id: item.roomId },
+                        params: { id: item.roomId }
                       });
                     }}
                     className="w-full p-4 flex items-start gap-3 hover:bg-orange-50/50 transition-colors text-left group"
                   >
-                    <div className="w-12 h-12 rounded-full bg-orange-100 border-2 border-white shadow-sm overflow-hidden flex-shrink-0">
+                    <div className="w-12 h-12 rounded-full bg-orange-100 border-2 border-white shadow-sm overflow-hidden shrink-0">
                       {item.partnerAvatarUrl ? (
                         <img
                           src={item.partnerAvatarUrl}
@@ -731,25 +779,21 @@ const FloatingChatWidget = () => {
         </div>
       )}
 
-      <button
-        onClick={() => setOpen(!open)}
-        className={`w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 ${
-          open ? "bg-white text-orange-500 rotate-90" : "bg-[#FF914D] text-white"
-        }`}
-      >
-        {open ? (
-          <X className="w-7 h-7 md:w-8 md:h-8" />
-        ) : (
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          className="w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 bg-[#FF914D] text-white"
+        >
           <div className="relative">
             <MessageCircle className="w-7 h-7 md:w-8 md:h-8 fill-current" />
             {hasUnreadConversations && (
-              <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 bg-red-500 text-white rounded-full border-2 border-[#FF914D] text-[10px] font-black leading-none flex items-center justify-center">
+              <span className="absolute -top-2 -right-2 min-w-4.5 h-4.5 px-1 bg-red-500 text-white rounded-full border-2 border-[#FF914D] text-[10px] font-black leading-none flex items-center justify-center">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
           </div>
-        )}
-      </button>
+        </button>
+      )}
     </div>
   );
 };

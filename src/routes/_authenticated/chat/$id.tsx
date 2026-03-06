@@ -3,26 +3,16 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ServiceChat } from "@/components/service/ServiceChat";
+import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
 import type { ChatRoomListItem } from "@/types/service";
 import { cleanPreviewMessage, withTimeout } from "@/utils/helpers";
-import supabase from "@/utils/supabase";
+import supabase, { isUuidLike } from "@/utils/supabase";
 
 export const Route = createFileRoute("/_authenticated/chat/$id")({
-  component: ChatRouteComponent
+  component: ChatRouteComponent,
+  pendingComponent: () => <Loading />
 });
-
-const CHAT_IMAGE_PREFIX = "[CHAT_IMAGE]";
-const SYSTEM_HIRE_ACCEPTED_PREFIX = "[SYSTEM_HIRE_ACCEPTED]";
-const SYSTEM_DELIVERY_ACCEPTED_PREFIX = "[SYSTEM_DELIVERY_ORDER_ACCEPTED]";
-const SYSTEM_DELIVERY_CREATED_PREFIX = "[SYSTEM_DELIVERY_ROOM_CREATED]";
-const SYSTEM_DELIVERY_DONE_PREFIX = "[SYSTEM_DELIVERY_DONE]";
-const SYSTEM_WORK_PRICE_PREFIX = "[SYSTEM_WORK_PRICE_AGREED]";
-const SYSTEM_WORK_PAYMENT_HELD_PREFIX = "[SYSTEM_WORK_PAYMENT_HELD]";
-const SYSTEM_WORK_SUBMITTED_PREFIX = "[SYSTEM_WORK_SUBMITTED]";
-const SYSTEM_WORK_REVISION_PREFIX = "[SYSTEM_WORK_REVISION_REQUESTED]";
-const SYSTEM_WORK_APPROVED_PREFIX = "[SYSTEM_WORK_APPROVED]";
-const SYSTEM_WORK_RELEASED_PREFIX = "[SYSTEM_WORK_RELEASED]";
 
 const resolveCustomerId = (room: any) =>
   String(room?.customer_id ?? room?.user_id ?? "");
@@ -46,6 +36,17 @@ const isColumnMissingError = (error: any) => {
     message.includes("does not exist") ||
     message.includes("could not find")
   );
+};
+
+const getTagValue = (message: string, tag: string) => {
+  const match = message.match(new RegExp(`${tag}:([^\\s]+)`, "i"));
+  return match?.[1] ? String(match[1]) : "";
+};
+
+const getPriceFromMessage = (message: string) => {
+  const raw = getTagValue(message, "PRICE");
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
 };
 
 function ChatRouteComponent() {
@@ -84,27 +85,6 @@ function ChatRouteComponent() {
   const [workflowBusyAction, setWorkflowBusyAction] = useState<
     "pay" | "submit" | "approve" | "decline" | null
   >(null);
-
-  const extractImageUrl = (message: string | null | undefined) =>
-    typeof message === "string" && message.startsWith(CHAT_IMAGE_PREFIX)
-      ? (message || "").replace(CHAT_IMAGE_PREFIX, "").trim()
-      : null;
-
-  const isImageMessage = (message: string | null | undefined) =>
-    typeof message === "string" && message.startsWith(CHAT_IMAGE_PREFIX);
-
-  const toImageMessage = (url: string) => `${CHAT_IMAGE_PREFIX} ${url}`;
-
-  const getTagValue = (message: string, tag: string) => {
-    const match = message.match(new RegExp(`${tag}:([^\\s]+)`, "i"));
-    return match?.[1] ? String(match[1]) : "";
-  };
-
-  const getPriceFromMessage = (message: string) => {
-    const raw = getTagValue(message, "PRICE");
-    const value = Number(raw);
-    return Number.isFinite(value) ? value : 0;
-  };
 
   const loadRoomInfo = useCallback(async () => {
     if (!roomId || !currentUserId) return;
@@ -196,7 +176,7 @@ function ChatRouteComponent() {
         const { data, error: msgError } = await withTimeout(
           supabase
             .from("chat_messages")
-            .select("*")
+            .select("id, room_id, sender_id, content, created_at, message_type")
             .eq("room_id", roomId)
             .order("created_at", { ascending: true }),
           30000
@@ -244,7 +224,7 @@ function ChatRouteComponent() {
     const fetchRooms = async () => {
       const now = Date.now();
       if (now - lastFetchRoomsTimeRef.current < 2000) return; // Throttle to every 2s
-      
+
       try {
         setLoadingChatRoomList(true);
         lastFetchRoomsTimeRef.current = now;
@@ -320,9 +300,7 @@ function ChatRouteComponent() {
           const roomIds = resolvedRooms.map((r) => r.id);
           const orderIds = Array.from(
             new Set(
-              resolvedRooms
-                .map((r) => String(r.order_id || ""))
-                .filter(Boolean)
+              resolvedRooms.map((r) => String(r.order_id || "")).filter(Boolean)
             )
           );
 
@@ -352,14 +330,16 @@ function ChatRouteComponent() {
                 ? freelancerId
                 : customerId;
             })
-            .filter(Boolean);
+            .filter((id) => id && isUuidLike(String(id)));
 
           const [{ data: profiles }, { data: latestMessages }] =
             await Promise.all([
-              supabase.from("profiles").select("*").in("id", partnerIds),
+              partnerIds.length > 0
+                ? supabase.from("profiles").select("*").in("id", partnerIds)
+                : Promise.resolve({ data: [] as any[] }),
               supabase
                 .from("chat_messages")
-                .select("room_id, message, created_at, sender_id")
+                .select("room_id, content, created_at, sender_id, message_type")
                 .in("room_id", roomIds)
                 .order("created_at", { ascending: false })
             ]);
@@ -379,10 +359,12 @@ function ChatRouteComponent() {
             }
           });
 
-          const extraPartnerIds = Array.from(latestNonSelfSenderByRoom.values());
+          const extraPartnerIds = Array.from(
+            latestNonSelfSenderByRoom.values()
+          );
           if (extraPartnerIds.length > 0) {
             const missingPartnerIds = extraPartnerIds.filter(
-              (id) => !pMap.has(String(id))
+              (id) => id && isUuidLike(String(id)) && !pMap.has(String(id))
             );
 
             if (missingPartnerIds.length > 0) {
@@ -406,14 +388,16 @@ function ChatRouteComponent() {
             const isCustomer = customerId === String(currentUserId);
             let partnerId = isCustomer ? freelancerId : customerId;
             if (!partnerId || String(partnerId) === String(currentUserId)) {
-              partnerId = latestNonSelfSenderByRoom.get(String(r.id)) || partnerId;
+              partnerId =
+                latestNonSelfSenderByRoom.get(String(r.id)) || partnerId;
             }
             const p = pMap.get(String(partnerId));
             const last = msgMap.get(r.id);
 
-            const lastTxt = isImageMessage(last?.message)
-              ? "Image"
-              : cleanPreviewMessage(last?.message);
+            const lastTxt =
+              last?.message_type === "IMAGE"
+                ? "Image"
+                : cleanPreviewMessage(last?.content, last?.message_type);
 
             return {
               roomId: r.id,
@@ -445,31 +429,56 @@ function ChatRouteComponent() {
     fetchRooms();
   }, [currentUserId]);
 
-  const sendMessage = async (overrideMessage?: string) => {
-    const text = (overrideMessage || chatInput).trim();
-    if (!roomId || !currentUserId || !text || !orderId) return;
+  const sendMessage = useCallback(
+    async (overrideMessage?: string, forceType?: string) => {
+      const text = (overrideMessage || chatInput).trim();
+      if (!roomId || !currentUserId || !text || !orderId) return;
 
-    try {
-      setSending(true);
+      try {
+        setSending(true);
 
-      const { error: sendError } = await withTimeout(
-        supabase.from("chat_messages").insert({
-          room_id: roomId,
-          order_id: orderId,
-          sender_id: currentUserId,
-          message: text
-        }),
-        30000
-      );
+        let mType = forceType || "TEXT";
+        let finalContent = text;
 
-      if (sendError) throw sendError;
-      if (!overrideMessage) setChatInput("");
-    } catch (e: any) {
-      setChatError(e.message);
-    } finally {
-      setSending(false);
-    }
-  };
+        if (mType.startsWith("SYSTEM_")) {
+          finalContent = `[${mType}] ${text}`;
+          mType = "SYSTEM";
+        }
+
+        const { data: newMessage, error: sendError } = await withTimeout(
+          supabase
+            .from("chat_messages")
+            .insert({
+              room_id: roomId,
+              order_id: orderId,
+              sender_id: currentUserId,
+              content: finalContent,
+              message_type: mType
+            })
+            .select()
+            .single(),
+          30000
+        );
+
+        if (sendError) throw sendError;
+
+        if (newMessage) {
+          setMessages((prev) => {
+            const exists = prev.some((m) => m.id === newMessage.id);
+            if (exists) return prev;
+            return [...prev, newMessage];
+          });
+        }
+
+        if (!overrideMessage) setChatInput("");
+      } catch (e: any) {
+        setChatError(e.message);
+      } finally {
+        setSending(false);
+      }
+    },
+    [chatInput, roomId, currentUserId, orderId]
+  );
 
   const onImageSelected = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -494,14 +503,28 @@ function ChatRouteComponent() {
         .getPublicUrl(filePath);
 
       const publicUrl = publicUrlData.publicUrl;
-      const imgMsg = toImageMessage(publicUrl);
 
-      await supabase.from("chat_messages").insert({
-        room_id: roomId,
-        order_id: orderId,
-        sender_id: currentUserId,
-        message: imgMsg
-      });
+      const { data: newMessage, error: msgError } = await supabase
+        .from("chat_messages")
+        .insert({
+          room_id: roomId,
+          order_id: orderId,
+          sender_id: currentUserId,
+          content: publicUrl,
+          message_type: "IMAGE"
+        })
+        .select()
+        .single();
+
+      if (msgError) throw msgError;
+
+      if (newMessage) {
+        setMessages((prev) => {
+          const exists = prev.some((m) => m.id === newMessage.id);
+          if (exists) return prev;
+          return [...prev, newMessage];
+        });
+      }
     } catch (e: any) {
       setChatError(e.message);
     } finally {
@@ -532,13 +555,16 @@ function ChatRouteComponent() {
 
     return {
       ...item,
-      partnerName: otherParticipant.full_name || otherParticipant.email || item.partnerName,
+      partnerName:
+        otherParticipant.full_name ||
+        otherParticipant.email ||
+        item.partnerName,
       partnerAvatarUrl:
         otherParticipant.avatar_url ||
         otherParticipant.image_url ||
         otherParticipant.photo_url ||
         item.partnerAvatarUrl ||
-        null,
+        null
     };
   });
 
@@ -547,25 +573,32 @@ function ChatRouteComponent() {
     : false;
 
   const serviceWorkflow = useMemo(() => {
-    const hasHireAccepted = messages.some((row: any) =>
-      String(row?.message || "").startsWith(SYSTEM_HIRE_ACCEPTED_PREFIX)
-    );
-    const isDeliveryFlow = messages.some((row: any) => {
-      const message = String(row?.message || "");
+    const hasHireAccepted = messages.some((row: any) => {
+      const mType = String(row?.message_type || "");
+      const content = String(row?.content || "");
       return (
-        message.startsWith(SYSTEM_DELIVERY_ACCEPTED_PREFIX) ||
-        message.startsWith(SYSTEM_DELIVERY_CREATED_PREFIX) ||
-        message.startsWith(SYSTEM_DELIVERY_DONE_PREFIX)
+        mType === "SYSTEM_HIRE_ACCEPTED" ||
+        (mType === "SYSTEM" && content.startsWith("[SYSTEM_HIRE_ACCEPTED]"))
+      );
+    });
+    const isDeliveryFlow = messages.some((row: any) => {
+      const mType = String(row?.message_type || "");
+      const content = String(row?.content || "");
+      return (
+        mType === "SYSTEM_DELIVERY_ORDER_ACCEPTED" ||
+        mType === "SYSTEM_DELIVERY_ROOM_CREATED" ||
+        mType === "SYSTEM_DELIVERY_DONE" ||
+        (mType === "SYSTEM" &&
+          (content.startsWith("[SYSTEM_DELIVERY_ORDER_ACCEPTED]") ||
+            content.startsWith("[SYSTEM_DELIVERY_ROOM_CREATED]") ||
+            content.startsWith("[SYSTEM_DELIVERY_DONE]")))
       );
     });
     const isDeliverySession =
-      String(serviceMeta?.category || "").toUpperCase() === "DELIVERY_SESSION";
+      String(serviceMeta?.category || "").toUpperCase() === "DELIVERY";
 
     const enabled =
-      !!serviceMeta &&
-      !isDeliveryFlow &&
-      !isDeliverySession &&
-      hasHireAccepted;
+      !!serviceMeta && !isDeliveryFlow && !isDeliverySession && hasHireAccepted;
 
     if (!enabled) {
       return {
@@ -587,36 +620,44 @@ function ChatRouteComponent() {
     let latestReleasedAt = 0;
 
     (messages as any[]).forEach((row: any) => {
-      const message = String(row?.message || "");
+      const content = String(row?.content || "");
+      const mType = String(row?.message_type || "");
       const createdAt = Date.parse(String(row?.created_at || ""));
       const ts = Number.isFinite(createdAt) ? createdAt : 0;
 
-      if (message.startsWith(SYSTEM_WORK_PRICE_PREFIX)) {
-        const parsedPrice = getPriceFromMessage(message);
+      const isType = (type: string) =>
+        mType === type || (mType === "SYSTEM" && content.startsWith(`[${type}]`));
+
+      if (isType("SYSTEM_WORK_PRICE")) {
+        const parsedPrice = getPriceFromMessage(content);
         if (parsedPrice > 0) {
           agreedPrice = parsedPrice;
         }
       }
-      if (message.startsWith(SYSTEM_WORK_PAYMENT_HELD_PREFIX)) {
+      if (isType("SYSTEM_WORK_PAYMENT_HELD")) {
         paymentHeldAt = Math.max(paymentHeldAt, ts);
       }
-      if (message.startsWith(SYSTEM_WORK_SUBMITTED_PREFIX)) {
+      if (isType("SYSTEM_WORK_SUBMITTED")) {
         latestSubmittedAt = Math.max(latestSubmittedAt, ts);
       }
-      if (message.startsWith(SYSTEM_WORK_REVISION_PREFIX)) {
+      if (isType("SYSTEM_WORK_REVISION")) {
         latestRevisionAt = Math.max(latestRevisionAt, ts);
       }
-      if (message.startsWith(SYSTEM_WORK_APPROVED_PREFIX)) {
+      if (isType("SYSTEM_WORK_APPROVED")) {
         latestApprovedAt = Math.max(latestApprovedAt, ts);
       }
-      if (message.startsWith(SYSTEM_WORK_RELEASED_PREFIX)) {
+      if (isType("SYSTEM_WORK_RELEASED")) {
         latestReleasedAt = Math.max(latestReleasedAt, ts);
       }
     });
 
     const paymentHeld = paymentHeldAt > 0;
     const isReleased = latestReleasedAt > 0;
-    const latestReviewAt = Math.max(latestRevisionAt, latestApprovedAt, latestReleasedAt);
+    const latestReviewAt = Math.max(
+      latestRevisionAt,
+      latestApprovedAt,
+      latestReleasedAt
+    );
     const awaitingCustomerReview =
       latestSubmittedAt > 0 && latestSubmittedAt > latestReviewAt;
 
@@ -625,10 +666,12 @@ function ChatRouteComponent() {
       statusText = "Payment is held. Freelancer can submit work for review.";
     }
     if (awaitingCustomerReview && !isReleased) {
-      statusText = "Work submitted. Waiting for customer approval or revision request.";
+      statusText =
+        "Work submitted. Waiting for customer approval or revision request.";
     }
     if (latestRevisionAt > latestSubmittedAt && !isReleased) {
-      statusText = "Customer requested revision. Freelancer should submit an updated result.";
+      statusText =
+        "Customer requested revision. Freelancer should submit an updated result.";
     }
     if (isReleased) {
       statusText = "Work approved. Payment released to freelancer earning.";
@@ -641,24 +684,34 @@ function ChatRouteComponent() {
       canPayAndStartWork:
         !isCurrentUserFreelancerInRoom && !paymentHeld && !isReleased,
       canSubmitWork:
-        isCurrentUserFreelancerInRoom && paymentHeld && !isReleased && !awaitingCustomerReview,
+        isCurrentUserFreelancerInRoom &&
+        paymentHeld &&
+        !isReleased &&
+        !awaitingCustomerReview,
       canApproveWork:
-        !isCurrentUserFreelancerInRoom && paymentHeld && !isReleased && awaitingCustomerReview,
+        !isCurrentUserFreelancerInRoom &&
+        paymentHeld &&
+        !isReleased &&
+        awaitingCustomerReview,
       canDeclineWork:
-        !isCurrentUserFreelancerInRoom && paymentHeld && !isReleased && awaitingCustomerReview
+        !isCurrentUserFreelancerInRoom &&
+        paymentHeld &&
+        !isReleased &&
+        awaitingCustomerReview
     };
   }, [messages, serviceMeta, isCurrentUserFreelancerInRoom]);
 
   const sendSystemWorkflowMessage = useCallback(
-    async (message: string) => {
-      await sendMessage(message);
+    async (message: string, type: string) => {
+      await sendMessage(message, type);
       window.dispatchEvent(new Event("service-chat-updated"));
     },
     [sendMessage]
   );
 
   const payAndStartWork = useCallback(async () => {
-    if (!serviceWorkflow.enabled || !serviceMeta || !activeRoomParticipants) return;
+    if (!serviceWorkflow.enabled || !serviceMeta || !activeRoomParticipants)
+      return;
     const agreedPrice = Number(serviceWorkflow.agreedPrice || 0);
     if (agreedPrice <= 0) {
       setChatError("Agreed price must be greater than 0.");
@@ -673,15 +726,22 @@ function ChatRouteComponent() {
       const agreedText = agreedPrice.toFixed(2);
 
       await sendSystemWorkflowMessage(
-        `${SYSTEM_WORK_PRICE_PREFIX} SERVICE:${serviceId} PRICE:${agreedText}`
+        `SERVICE:${serviceId} PRICE:${agreedText}`,
+        "SYSTEM_WORK_PRICE"
       );
       await sendSystemWorkflowMessage(
-        `${SYSTEM_WORK_PAYMENT_HELD_PREFIX} SERVICE:${serviceId} PRICE:${agreedText} CUSTOMER:${customerId} FREELANCER:${freelancerId} Payment held and work started.`
+        `SERVICE:${serviceId} PRICE:${agreedText} CUSTOMER:${customerId} FREELANCER:${freelancerId} Payment held and work started.`,
+        "SYSTEM_WORK_PAYMENT_HELD"
       );
     } finally {
       setWorkflowBusyAction(null);
     }
-  }, [serviceWorkflow, serviceMeta, activeRoomParticipants, sendSystemWorkflowMessage]);
+  }, [
+    serviceWorkflow,
+    serviceMeta,
+    activeRoomParticipants,
+    sendSystemWorkflowMessage
+  ]);
 
   const submitWork = useCallback(async () => {
     if (!serviceWorkflow.enabled || !serviceMeta || !currentUserId) return;
@@ -689,7 +749,8 @@ function ChatRouteComponent() {
     try {
       setWorkflowBusyAction("submit");
       await sendSystemWorkflowMessage(
-        `${SYSTEM_WORK_SUBMITTED_PREFIX} SERVICE:${serviceMeta.serviceId} FREELANCER:${currentUserId} Submitted work for customer review.`
+        `SERVICE:${serviceMeta.serviceId} FREELANCER:${currentUserId} Submitted work for customer review.`,
+        "SYSTEM_WORK_SUBMITTED"
       );
     } finally {
       setWorkflowBusyAction(null);
@@ -702,7 +763,8 @@ function ChatRouteComponent() {
     try {
       setWorkflowBusyAction("decline");
       await sendSystemWorkflowMessage(
-        `${SYSTEM_WORK_REVISION_PREFIX} SERVICE:${serviceMeta.serviceId} CUSTOMER:${currentUserId} Customer requested revision. Please continue and submit again.`
+        `SERVICE:${serviceMeta.serviceId} CUSTOMER:${currentUserId} Customer requested revision. Please continue and submit again.`,
+        "SYSTEM_WORK_REVISION"
       );
     } finally {
       setWorkflowBusyAction(null);
@@ -710,7 +772,13 @@ function ChatRouteComponent() {
   }, [serviceWorkflow, serviceMeta, currentUserId, sendSystemWorkflowMessage]);
 
   const approveWork = useCallback(async () => {
-    if (!serviceWorkflow.enabled || !serviceMeta || !currentUserId || !activeRoomParticipants) return;
+    if (
+      !serviceWorkflow.enabled ||
+      !serviceMeta ||
+      !currentUserId ||
+      !activeRoomParticipants
+    )
+      return;
 
     const agreedPrice = Number(serviceWorkflow.agreedPrice || 0);
     if (agreedPrice <= 0) {
@@ -726,15 +794,23 @@ function ChatRouteComponent() {
       const agreedText = agreedPrice.toFixed(2);
 
       await sendSystemWorkflowMessage(
-        `${SYSTEM_WORK_APPROVED_PREFIX} SERVICE:${serviceId} CUSTOMER:${currentUserId} Work approved by customer.`
+        `SERVICE:${serviceId} CUSTOMER:${currentUserId} Work approved by customer.`,
+        "SYSTEM_WORK_APPROVED"
       );
       await sendSystemWorkflowMessage(
-        `${SYSTEM_WORK_RELEASED_PREFIX} SERVICE:${serviceId} PRICE:${agreedText} CUSTOMER:${customerId} FREELANCER:${freelancerId} Payment released to freelancer earning.`
+        `SERVICE:${serviceId} PRICE:${agreedText} CUSTOMER:${customerId} FREELANCER:${freelancerId} Payment released to freelancer earning.`,
+        "SYSTEM_WORK_RELEASED"
       );
     } finally {
       setWorkflowBusyAction(null);
     }
-  }, [serviceWorkflow, serviceMeta, currentUserId, activeRoomParticipants, sendSystemWorkflowMessage]);
+  }, [
+    serviceWorkflow,
+    serviceMeta,
+    currentUserId,
+    activeRoomParticipants,
+    sendSystemWorkflowMessage
+  ]);
 
   return (
     <ServiceChat
@@ -764,9 +840,7 @@ function ChatRouteComponent() {
       messagesContainerRef={messagesContainerRef}
       chatLoading={chatLoading}
       messages={messages}
-      currentUserId={currentUserId}
       isCurrentUserFreelancerInRoom={isCurrentUserFreelancerInRoom}
-      extractImageUrl={extractImageUrl}
       chatError={chatError}
       imageInputRef={imageInputRef}
       onImageSelected={onImageSelected}

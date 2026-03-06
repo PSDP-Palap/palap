@@ -6,6 +6,7 @@ import { DateTimeSection } from "@/components/payment/DateTimeSection";
 import { LocationSection } from "@/components/payment/LocationSection";
 import { OrderItemsList } from "@/components/payment/OrderItemsList";
 import { PriceSummarySide } from "@/components/payment/PriceSummarySide";
+import Loading from "@/components/shared/Loading";
 import { useCartStore } from "@/stores/useCartStore";
 import { useUserStore } from "@/stores/useUserStore";
 import type { SavedAddressSnapshot } from "@/types/payment";
@@ -348,7 +349,14 @@ function RouteComponent() {
       const nextAddressId = await persistLocation();
       if (!nextAddressId) return;
 
-      router.navigate({ to: "/payment" });
+      router.navigate({
+        to: "/payment",
+        search: {
+          subtotal,
+          tax,
+          total
+        }
+      });
     } catch (err: any) {
       setLocationError(
         err?.message || "Failed to save destination before payment."
@@ -401,11 +409,7 @@ function RouteComponent() {
   });
 
   if (!isCartReady || loading) {
-    return (
-      <div className="min-h-screen bg-[#F9E6D8] flex items-center justify-center pt-24">
-        <p className="text-[#D35400] font-bold">Loading order summary...</p>
-      </div>
-    );
+    return <Loading />;
   }
 
   return (

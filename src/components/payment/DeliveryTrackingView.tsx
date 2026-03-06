@@ -1,4 +1,5 @@
-import type { DeliveryTracking } from "@/types/payment";
+import Loading from "@/components/shared/Loading";
+import type { DeliveryTracking } from "@/types/order";
 
 import { DeliveryTrackingWidget } from "./DeliveryTrackingWidget";
 
@@ -29,6 +30,8 @@ interface DeliveryTrackingViewProps {
   loadTracking: (id: string) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   router: any;
+  handlePay?: () => Promise<void>;
+  isPaying?: boolean;
 }
 
 export function DeliveryTrackingView({
@@ -54,8 +57,12 @@ export function DeliveryTrackingView({
   showDeliveredNotice,
   acknowledgeDeliveredNotice,
   loadTracking,
-  router
+  router,
+  handlePay,
+  isPaying = false
 }: DeliveryTrackingViewProps) {
+  const isCompleteUnpaid = status === "COMPLETE";
+
   return (
     <div className="min-h-screen bg-[#F9E6D8] pt-24 pb-10">
       <main className="max-w-6xl mx-auto px-4">
@@ -73,14 +80,36 @@ export function DeliveryTrackingView({
               <span
                 className={`px-3 py-1 rounded-full text-xs font-black uppercase ${accepted ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}
               >
-                {accepted ? "Freelancer Accepted" : "Waiting for Freelance"}
+                {accepted ? "Freelancer Accepted" : "WAITING FOR FREELANCE"}
               </span>
             </div>
           </div>
 
+          {isCompleteUnpaid && handlePay && (
+            <div className="rounded-2xl border-2 border-orange-200 bg-orange-50 p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm animate-pulse">
+              <div className="text-center md:text-left">
+                <h3 className="text-xl font-black text-orange-800 uppercase tracking-tight">
+                  Payment Required
+                </h3>
+                <p className="text-sm text-orange-700 font-bold">
+                  The freelancer has completed the work. Please release the
+                  payment of ฿ {trackingData?.price.toFixed(2)}.
+                </p>
+              </div>
+              <button
+                onClick={handlePay}
+                disabled={isPaying}
+                className="w-full md:w-auto px-10 py-3 rounded-xl bg-[#FF914D] text-white font-black text-lg shadow-lg hover:bg-[#e67e3d] transition-all transform hover:scale-105 active:scale-95 disabled:bg-gray-300 disabled:scale-100"
+              >
+                {isPaying ? "Processing..." : "Pay Now"}
+              </button>
+            </div>
+          )}
+
           {(trackingLoading || !trackingData) && !trackingError && (
             <div className="rounded-xl border border-orange-100 bg-orange-50 p-5">
-              <p className="text-sm font-semibold text-[#4A2600]">
+              <Loading fullScreen={false} size={60} />
+              <p className="text-sm font-semibold text-[#4A2600] text-center mt-2">
                 Loading delivery details...
               </p>
             </div>
@@ -242,7 +271,7 @@ export function DeliveryTrackingView({
                   </div>
                   <div>
                     <p className="text-gray-500">Status</p>
-                    <p className="font-bold text-[#4A2600]">
+                    <p className="font-bold text-[#4A2600] uppercase">
                       {status.replaceAll("_", " ")}
                     </p>
                   </div>
@@ -320,7 +349,7 @@ export function DeliveryTrackingView({
                     <div className="space-y-2 text-sm text-[#4A2600]">
                       <p
                         className={
-                          status === "pending" || !trackingData.freelanceId
+                          status === "PENDING" || !trackingData.freelanceId
                             ? "font-black text-orange-600"
                             : ""
                         }
@@ -358,13 +387,6 @@ export function DeliveryTrackingView({
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => router.navigate({ to: "/product" })}
-              className="px-5 py-2 rounded-lg bg-[#A03F00] text-white font-black hover:bg-[#8a3600]"
-            >
-              Back to Products
-            </button>
-            <button
-              type="button"
               onClick={() => router.navigate({ to: "/" })}
               className="px-5 py-2 rounded-lg bg-gray-100 text-gray-800 font-bold hover:bg-gray-200"
             >
@@ -390,7 +412,7 @@ export function DeliveryTrackingView({
       )}
 
       {showDeliveredNotice && (
-        <div className="fixed inset-0 z-[100] bg-black/35 flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-100 bg-black/35 flex items-center justify-center px-4">
           <div className="w-full max-w-md rounded-xl bg-white border border-orange-200 shadow-2xl p-6 text-center">
             <p className="text-2xl font-black text-green-600 uppercase">
               Order Succeed

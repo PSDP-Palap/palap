@@ -4,10 +4,11 @@ export type LocationField = "pickup" | "destination";
 
 export interface FreelanceConversation {
   roomId: string;
-  serviceId: string;
+  orderId?: string;
+  serviceId?: string;
   customerId: string;
   customerName: string;
-  customerAvatarUrl: string | null;
+  customerAvatarUrl?: string | null;
   serviceName: string;
   lastMessage: string;
   lastAt: string;
@@ -15,7 +16,7 @@ export interface FreelanceConversation {
 
 export interface DeliveryOrderItem {
   orderId: string;
-  serviceId: string;
+  serviceId?: string;
   customerId: string;
   customerName: string;
   productName: string;
@@ -23,21 +24,25 @@ export interface DeliveryOrderItem {
   destinationLabel: string;
   price: number;
   status: string;
-  createdAt: string;
+  createdAt?: string;
+  freelancer_id?: string | null;
+  freelance_id?: string | null;
 }
 
 export interface PendingHireRequestItem {
   roomId: string;
+  orderId: string;
   serviceId: string;
   customerId: string;
   customerName: string;
   serviceName: string;
   requestMessage: string;
-  requestedAt: string;
+  requestedAt?: string;
 }
 
 export interface OngoingServiceJobItem {
   roomId: string;
+  orderId: string;
   serviceId: string;
   customerId: string;
   customerName: string;
@@ -45,4 +50,5 @@ export interface OngoingServiceJobItem {
   acceptedAt: string;
   lastAt: string;
   price: number;
+  status: string;
 }

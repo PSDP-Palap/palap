@@ -1,11 +1,12 @@
 import { Link } from "@tanstack/react-router";
 
 import favoriteIcon from "@/assets/3d659b7bdc33c87baf693bc75bf90986.jpg";
+import type { Address } from "@/types/address";
 import type { Product } from "@/types/product";
 
 interface ProductDetailViewProps {
   product: Product;
-  pickupAddress: any;
+  pickupAddress: Address | null;
   pickupLookupHint: string | null;
   maxQty: number;
   qty: number;

@@ -13,7 +13,7 @@ import supabase from "@/utils/supabase";
 
 import { FreelanceManagementDialog } from "./FreelanceManagementDialog";
 
-export const FreelanceTab = () => {
+const FreelanceTab = () => {
   const [freelances, setFreelances] = useState<FreelanceProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -37,8 +37,6 @@ export const FreelanceTab = () => {
         .eq("role", "freelance");
 
       if (error) throw error;
-
-      console.log("Supabase raw response:", data);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const transformed = (data || []).map((item: any) => {
@@ -259,3 +257,5 @@ export const FreelanceTab = () => {
     </TooltipProvider>
   );
 };
+
+export default FreelanceTab;

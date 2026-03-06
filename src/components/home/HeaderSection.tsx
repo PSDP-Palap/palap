@@ -1,4 +1,11 @@
 const HeaderSection = () => {
+  const scrollToServices = () => {
+    const servicesSection = document.getElementById("services");
+    if (servicesSection) {
+      servicesSection.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
     <div className="absolute inset-0 flex items-center">
       <div className="max-w-6xl mx-auto px-4 w-full">
@@ -12,7 +19,10 @@ const HeaderSection = () => {
           >
             LET'S ME TAKE CARE YOUR PETS
           </h2>
-          <button className="bg-white text-black font-bold text-sm md:text-base py-3 px-8 rounded-full shadow-lg hover:bg-gray-100 hover:-translate-y-1 transition-all duration-300">
+          <button
+            onClick={scrollToServices}
+            className="bg-white text-black font-bold text-sm md:text-base py-3 px-8 rounded-full shadow-lg hover:bg-gray-100 hover:-translate-y-1 transition-all duration-300"
+          >
             Try now
           </button>
         </div>

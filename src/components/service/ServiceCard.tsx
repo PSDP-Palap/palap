@@ -1,4 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
+
 import type { Service } from "@/types/service";
 
 interface ServiceCardProps {
@@ -19,8 +20,8 @@ export function ServiceCard({
       <div
         onClick={() =>
           router.navigate({
-            to: "/service/$id",
-            params: { id: service.service_id || service.id || "" },
+            to: "/service/$service_id",
+            params: { service_id: service.service_id || service.id || "" }
           })
         }
         className="bg-white rounded-2xl p-5 shadow-sm transition-all cursor-pointer border-2 h-full flex flex-col group border-transparent hover:border-orange-200 hover:shadow-md"

@@ -7,26 +7,24 @@ import type { ServiceCategory } from "@/types/service";
 const categoryIconMap: Record<ServiceCategory, string> = {
   SHOPPING: "🍲",
   DELIVERY: "🚐",
-  CARE: "🦮",
-  DELIVERY_SESSION: "📦"
+  CARE: "🦮"
 };
 
 const categoryLabelMap: Record<ServiceCategory, string> = {
   SHOPPING: "ซื้อของ",
   DELIVERY: "รับ-ส่ง",
-  CARE: "ดูแลสัตว์เลี้ยง",
-  DELIVERY_SESSION: "ออเดอร์"
+  CARE: "ดูแลสัตว์เลี้ยง"
 };
 
 const ServiceSection = () => {
   const { services, loadServices } = useServiceStore();
 
   useEffect(() => {
-    loadServices();
+    loadServices(3);
   }, [loadServices]);
 
   return (
-    <section className="flex flex-col gap-8 py-12">
+    <section id="services" className="flex flex-col gap-8 py-12 scroll-mt-24">
       <div className="flex justify-between items-end px-2">
         <div>
           <h3 className="text-3xl font-black text-[#9a3c0b] uppercase">
@@ -45,10 +43,10 @@ const ServiceSection = () => {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-6">
-        {services.slice(0, 3).map((service) => (
+        {services.map((service) => (
           <Link
-            to="/service/$id"
-            params={{ id: service.service_id || service.id || "" }}
+            to="/service/$service_id"
+            params={{ service_id: service.service_id || service.id || "" }}
             key={service.service_id}
             className="group"
           >
@@ -111,7 +109,14 @@ const ServiceSection = () => {
             <p className="text-white/80 text-sm mt-2 mb-6">
               บริการด้วยใจ เพื่อเพื่อนสี่ขาของคุณ
             </p>
-            <button className="bg-white text-orange-500 font-bold py-3 px-8 rounded-full shadow-md hover:bg-orange-50 transition-all w-fit">
+            <button
+              onClick={() =>
+                document
+                  .getElementById("services")
+                  ?.scrollIntoView({ behavior: "smooth" })
+              }
+              className="bg-white text-orange-500 font-bold py-3 px-8 rounded-full shadow-md hover:bg-orange-50 transition-all w-fit"
+            >
               ลองเลย
             </button>
           </div>

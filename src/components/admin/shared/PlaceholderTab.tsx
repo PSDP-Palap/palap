@@ -1,4 +1,4 @@
-export const PlaceholderTab = ({ label }: { label: string }) => (
+const PlaceholderTab = ({ label }: { label: string }) => (
   <div className="bg-white rounded-2xl p-12 text-center border border-dashed border-gray-300">
     <div className="mx-auto w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
       <svg
@@ -22,3 +22,5 @@ export const PlaceholderTab = ({ label }: { label: string }) => (
     <p className="text-gray-500">ส่วนจัดการ {label} จะเปิดให้บริการเร็วๆ นี้</p>
   </div>
 );
+
+export default PlaceholderTab;
