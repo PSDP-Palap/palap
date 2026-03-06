@@ -10,7 +10,6 @@ interface ServiceDetailViewProps {
   defaultImage: string;
   defaultDescription: string;
   defaultHireMessage: string;
-  canOpenDeliverySessionChat: boolean;
   openChat: () => Promise<void>;
   startingChat: boolean;
   canTryHire: boolean;
@@ -19,6 +18,8 @@ interface ServiceDetailViewProps {
   setHireRequestMessage: (val: string) => void;
   sendHireRequest: () => Promise<void>;
   sendingHireRequest: boolean;
+  cancelHireRequest: () => Promise<void>;
+  cancelingHireRequest: boolean;
   requestLoading: boolean;
   canRequestHire: boolean;
   hasPendingHire: boolean;
@@ -41,7 +42,6 @@ export function ServiceDetailView({
   defaultImage,
   defaultDescription,
   defaultHireMessage,
-  canOpenDeliverySessionChat,
   openChat,
   startingChat,
   canTryHire,
@@ -50,6 +50,8 @@ export function ServiceDetailView({
   setHireRequestMessage,
   sendHireRequest,
   sendingHireRequest,
+  cancelHireRequest,
+  cancelingHireRequest,
   requestLoading,
   canRequestHire,
   hasPendingHire,
@@ -62,7 +64,6 @@ export function ServiceDetailView({
   decliningRequestRoomId,
   chatError,
   requestError,
-  activeOrderId,
   hasActiveOrder
 }: ServiceDetailViewProps) {
   return (
@@ -91,11 +92,23 @@ export function ServiceDetailView({
               </p>
 
               <div className="space-y-2 text-sm text-gray-700 bg-gray-50 rounded-xl p-4 border border-gray-100">
-                {service.pickup_address && (
-                  <p>• Pickup: {service.pickup_address}</p>
+                {(service.pickup_address || service.pickup_address_id) && (
+                  <p>
+                    • Pickup:{" "}
+                    {typeof service.pickup_address === "object"
+                      ? `${service.pickup_address?.name || ""} ${service.pickup_address?.address_detail || ""}`.trim() ||
+                        service.pickup_address_id
+                      : service.pickup_address || service.pickup_address_id}
+                  </p>
                 )}
-                {service.dest_address && (
-                  <p>• Destination: {service.dest_address}</p>
+                {(service.dest_address || service.destination_address_id) && (
+                  <p>
+                    • Destination:{" "}
+                    {typeof service.dest_address === "object"
+                      ? `${service.dest_address?.name || ""} ${service.dest_address?.address_detail || ""}`.trim() ||
+                        service.destination_address_id
+                      : service.dest_address || service.destination_address_id}
+                  </p>
                 )}
                 {service.category && <p>• Category: {service.category}</p>}
               </div>
@@ -140,75 +153,87 @@ export function ServiceDetailView({
               </p>
 
               <div className="pt-2 flex flex-wrap gap-2 items-center">
-                {(canOpenDeliverySessionChat || hasActiveOrder) && (
+                {hasActiveOrder ? (
                   <button
                     type="button"
                     onClick={openChat}
                     disabled={startingChat}
                     className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${startingChat ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
                   >
-                    {startingChat ? "Opening Chat..." : "Open Chat"}
+                    {startingChat ? "Loading Order..." : "View Order Details"}
                   </button>
-                )}
+                ) : (
+                  <>
+                    {canTryHire && !isHireRequested && (
+                      <div className="w-full">
+                        <p className="text-xs font-bold uppercase tracking-wider text-orange-700/70 mb-2">
+                          Message to freelancer
+                        </p>
+                        <textarea
+                          value={hireRequestMessage}
+                          onChange={(event) =>
+                            setHireRequestMessage(event.target.value)
+                          }
+                          className="w-full border border-orange-200 rounded-xl px-3 py-2 text-sm bg-white min-h-22"
+                          placeholder="Write your request message to the freelancer"
+                        />
+                      </div>
+                    )}
 
-                {canTryHire && !hasActiveOrder && !isHireRequested && (
-                  <div className="w-full">
-                    <p className="text-xs font-bold uppercase tracking-wider text-orange-700/70 mb-2">
-                      Message to freelancer
-                    </p>
-                    <textarea
-                      value={hireRequestMessage}
-                      onChange={(event) =>
-                        setHireRequestMessage(event.target.value)
-                      }
-                      className="w-full border border-orange-200 rounded-xl px-3 py-2 text-sm bg-white min-h-22"
-                      placeholder="Write your request message to the freelancer"
-                    />
-                  </div>
-                )}
+                    {canTryHire && !isHireRequested && (
+                      <button
+                        type="button"
+                        onClick={sendHireRequest}
+                        disabled={
+                          sendingHireRequest || requestLoading || !canRequestHire
+                        }
+                        className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${sendingHireRequest || requestLoading || !canRequestHire ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
+                      >
+                        {sendingHireRequest
+                          ? "Sending Request..."
+                          : "I Want to Hire This"}
+                      </button>
+                    )}
 
-                {canTryHire && !hasActiveOrder && !isHireRequested && (
-                  <button
-                    type="button"
-                    onClick={sendHireRequest}
-                    disabled={
-                      sendingHireRequest || requestLoading || !canRequestHire
-                    }
-                    className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${sendingHireRequest || requestLoading || !canRequestHire ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
-                  >
-                    {sendingHireRequest
-                      ? "Sending Request..."
-                      : "I Want to Hire This"}
-                  </button>
-                )}
+                    {canTryHire && hasPendingHire && (
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <button
+                          type="button"
+                          disabled
+                          className="inline-flex px-5 py-2 rounded-xl text-white font-bold bg-gray-300 cursor-not-allowed"
+                        >
+                          Waiting for Freelance Approval
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelHireRequest}
+                          disabled={cancelingHireRequest}
+                          className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${cancelingHireRequest ? "bg-gray-300 cursor-not-allowed" : "bg-red-600 hover:bg-red-700"}`}
+                        >
+                          {cancelingHireRequest ? "Canceling..." : "Cancel Request"}
+                        </button>
+                      </div>
+                    )}
 
-                {canTryHire && !hasActiveOrder && hasPendingHire && (
-                  <button
-                    type="button"
-                    disabled
-                    className="inline-flex px-5 py-2 rounded-xl text-white font-bold bg-gray-300 cursor-not-allowed"
-                  >
-                    Waiting for Freelance Approval
-                  </button>
+                    {canTryHire &&
+                      isHireRequested &&
+                      !hasPendingHire &&
+                      !hasAcceptedHire && (
+                        <button
+                          type="button"
+                          onClick={sendHireRequest}
+                          disabled={
+                            sendingHireRequest || requestLoading || !canRequestHire
+                          }
+                          className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${sendingHireRequest || requestLoading || !canRequestHire ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
+                        >
+                          {sendingHireRequest
+                            ? "Sending Request..."
+                            : "Request Again"}
+                        </button>
+                      )}
+                  </>
                 )}
-
-                {canTryHire && !hasActiveOrder &&
-                  isHireRequested &&
-                  !hasPendingHire &&
-                  !hasAcceptedHire && (
-                    <button
-                      type="button"
-                      onClick={sendHireRequest}
-                      disabled={
-                        sendingHireRequest || requestLoading || !canRequestHire
-                      }
-                      className={`inline-flex px-5 py-2 rounded-xl text-white font-bold ${sendingHireRequest || requestLoading || !canRequestHire ? "bg-gray-300 cursor-not-allowed" : "bg-[#D35400] hover:bg-[#b34700]"}`}
-                    >
-                      {sendingHireRequest
-                        ? "Sending Request..."
-                        : "Request Again"}
-                    </button>
-                  )}
 
                 <Link
                   to="/service"
@@ -217,19 +242,6 @@ export function ServiceDetailView({
                   Close
                 </Link>
               </div>
-
-              {canTryHire && !hasActiveOrder && hasPendingHire && (
-                <p className="text-sm text-orange-700 font-semibold">
-                  Your request has been sent. The freelancer must accept before
-                  chat starts.
-                </p>
-              )}
-
-              {canTryHire && !hasActiveOrder && hasAcceptedHire && (
-                <p className="text-sm text-green-700 font-semibold">
-                  Request accepted. You can now open chat.
-                </p>
-              )}
 
               {canTryHire && !canRequestHire && (
                 <p className="text-sm text-red-600 font-semibold">

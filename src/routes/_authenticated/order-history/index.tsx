@@ -22,8 +22,6 @@ type OrderHistoryItem = {
   isCompleted: boolean;
 };
 
-const DELIVERY_DONE_PREFIX = "[SYSTEM_DELIVERY_DONE]";
-
 function OrderHistoryPage() {
   const router = useRouter();
   const { profile, session } = useUserStore();
@@ -90,9 +88,11 @@ function OrderHistoryPage() {
           orderIds.length > 0
             ? supabase
                 .from("chat_messages")
-                .select("order_id, message")
+                .select("order_id, content, message_type")
                 .in("order_id", orderIds)
-                .like("message", `${DELIVERY_DONE_PREFIX} ORDER:%`)
+                .or(
+                  "message_type.eq.SYSTEM_DELIVERY_DONE,content.like.[SYSTEM_DELIVERY_DONE] ORDER:%"
+                )
                 .order("created_at", { ascending: false })
                 .limit(500)
             : Promise.resolve({ data: [] as any[] })
@@ -111,19 +111,19 @@ function OrderHistoryPage() {
             .map((row: any) => {
               const directId = String(row?.order_id || "").trim();
               if (directId) return directId;
-              return getOrderIdFromSystemMessage(String(row?.message || ""));
+              return getOrderIdFromSystemMessage(String(row?.content || ""));
             })
             .filter(Boolean)
         );
 
         const mapped: OrderHistoryItem[] = rows.map((row: any) => {
           const rowOrderId = String(row?.order_id || "");
-          const rawStatus = String(row?.status || "").toLowerCase();
+          const rawStatus = String(row?.status || "").toUpperCase();
           const completed =
             doneOrderSet.has(rowOrderId) || isCompletedOrderStatus(rawStatus, row?.payment_id);
           const normalizedStatus = completed
-            ? "delivered"
-            : rawStatus || "waiting";
+            ? "COMPLETE"
+            : rawStatus || "WAITING";
 
           return {
             orderId: rowOrderId,

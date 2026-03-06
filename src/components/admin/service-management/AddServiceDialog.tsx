@@ -33,8 +33,8 @@ export const AddServiceDialog = ({
     name: "",
     price: 0,
     category: "SHOPPING",
-    pickup_address: "",
-    dest_address: "",
+    pickup_address_id: "",
+    destination_address_id: "",
     image_url: "",
     detail_1: "",
     detail_2: ""
@@ -97,8 +97,8 @@ export const AddServiceDialog = ({
         name: "",
         price: 0,
         category: "SHOPPING",
-        pickup_address: "",
-        dest_address: "",
+        pickup_address_id: "",
+        destination_address_id: "",
         image_url: "",
         detail_1: "",
         detail_2: ""

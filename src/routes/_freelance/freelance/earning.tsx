@@ -18,26 +18,38 @@ function EarningRoute() {
     completedOrders: 0,
     pendingOrders: 0
   });
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [loadingEarning, setLoadingEarning] = useState(false);
 
   const loadEarningSummary = async () => {
     if (!currentUserId) return;
     try {
       setLoadingEarning(true);
-      const { data: earnings } = await supabase
+      const { data: earnings, error } = await supabase
         .from("freelance_earnings")
-        .select("*")
-        .eq("freelance_id", currentUserId);
-      const total = (earnings || []).reduce(
-        (sum, e) => sum + Number(e.amount || 0),
-        0
-      );
+        .select("*, orders(price, status)")
+        .eq("freelance_id", currentUserId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const list = earnings || [];
+      const total = list
+        .filter((e) => e.status === "completed" || e.status === "paid")
+        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      
+      const completedCount = list.filter((e) => e.status === "completed" || e.status === "paid").length;
+      const pendingCount = list.filter((e) => e.status === "pending").length;
+
+      setTransactions(list);
       setEarningSummary({
         totalIncome: total,
-        totalOrders: (earnings || []).length,
-        completedOrders: (earnings || []).length,
-        pendingOrders: 0
+        totalOrders: list.length,
+        completedOrders: completedCount,
+        pendingOrders: pendingCount
       });
+    } catch (err) {
+      console.error("Failed to load earnings:", err);
     } finally {
       setLoadingEarning(false);
     }
@@ -51,6 +63,7 @@ function EarningRoute() {
     <EarningTab
       loadingEarning={loadingEarning}
       earningSummary={earningSummary}
+      transactions={transactions}
     />
   );
 }

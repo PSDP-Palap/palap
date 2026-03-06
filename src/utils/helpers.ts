@@ -1,3 +1,5 @@
+import type { OrderStatus } from "@/types/order";
+
 export const withTimeout = async <T>(
   promiseLike: PromiseLike<T> | (() => Promise<T>),
   timeoutMs = 30000,
@@ -32,13 +34,15 @@ export const toNumber = (value: unknown): number | null => {
   return null;
 };
 
-export const ORDER_COMPLETED_STATUS_SET = new Set([
-  "completed",
-  "done",
-  "delivered",
-  "success",
-  "finished",
-  "closed"
+export const ORDER_COMPLETED_STATUS_SET: Set<OrderStatus | string> = new Set([
+  "COMPLETE",
+  "DONE",
+  "DELIVERED",
+  "SUCCESS",
+  "FINISHED",
+  "CLOSED",
+  "CANCEL",
+  "REJECT"
 ]);
 
 export const isCompletedOrderStatus = (
@@ -46,7 +50,8 @@ export const isCompletedOrderStatus = (
   paymentId?: string | null | undefined
 ): boolean => {
   if (paymentId && String(paymentId).trim()) return true;
-  return ORDER_COMPLETED_STATUS_SET.has(String(status || "").toLowerCase());
+  const s = String(status || "").trim().toUpperCase();
+  return ORDER_COMPLETED_STATUS_SET.has(s);
 };
 
 export const getOrderIdFromSystemMessage = (message: string | null | undefined): string => {
@@ -54,39 +59,27 @@ export const getOrderIdFromSystemMessage = (message: string | null | undefined):
   return match?.[1] ? String(match[1]) : "";
 };
 
-export const cleanPreviewMessage = (message: string | null | undefined): string => {
+export const cleanPreviewMessage = (
+  message: string | null | undefined,
+  type?: string | null
+): string => {
   if (!message) return "No message yet";
+  const upperType = String(type || "").toUpperCase();
+  if (upperType === "IMAGE") return "📷 Image";
   if (message.startsWith("[CHAT_IMAGE]")) return "📷 Image";
-  return message
-    .replace("[SYSTEM_HIRE_REQUEST]", "")
-    .replace("[SYSTEM_HIRE_ACCEPTED]", "")
-    .replace("[SYSTEM_HIRE_DECLINED]", "")
-    .replace("[SYSTEM_DELIVERY_ORDER_ACCEPTED]", "")
-    .replace("[SYSTEM_DELIVERY_ROOM_CREATED]", "")
-    .replace("[SYSTEM_DELIVERY_DONE]", "")
-    .replace("[SYSTEM_WORK_PRICE_AGREED]", "")
-    .replace("[SYSTEM_WORK_PAYMENT_HELD]", "")
-    .replace("[SYSTEM_WORK_SUBMITTED]", "")
-    .replace("[SYSTEM_WORK_REVISION_REQUESTED]", "")
-    .replace("[SYSTEM_WORK_APPROVED]", "")
-    .replace("[SYSTEM_WORK_RELEASED]", "")
-    .trim() || "No message yet";
+
+  // Strip all [SYSTEM_...] prefixes
+  const cleaned = message.replace(/^\[SYSTEM_[^\]]+\]\s*/i, "").trim();
+  return cleaned || "System message";
 };
 
-export const isSystemMessage = (message: string | null | undefined): boolean => {
+export const isSystemMessage = (
+  message: string | null | undefined,
+  type?: string | null
+): boolean => {
+  const upperType = String(type || "").toUpperCase();
+  if (upperType === "SYSTEM") return true;
+  if (upperType.startsWith("SYSTEM_")) return true;
   if (!message) return false;
-  return (
-    message.startsWith("[SYSTEM_HIRE_REQUEST]") ||
-    message.startsWith("[SYSTEM_HIRE_ACCEPTED]") ||
-    message.startsWith("[SYSTEM_HIRE_DECLINED]") ||
-    message.startsWith("[SYSTEM_DELIVERY_ORDER_ACCEPTED]") ||
-    message.startsWith("[SYSTEM_DELIVERY_ROOM_CREATED]") ||
-    message.startsWith("[SYSTEM_DELIVERY_DONE]") ||
-    message.startsWith("[SYSTEM_WORK_PRICE_AGREED]") ||
-    message.startsWith("[SYSTEM_WORK_PAYMENT_HELD]") ||
-    message.startsWith("[SYSTEM_WORK_SUBMITTED]") ||
-    message.startsWith("[SYSTEM_WORK_REVISION_REQUESTED]") ||
-    message.startsWith("[SYSTEM_WORK_APPROVED]") ||
-    message.startsWith("[SYSTEM_WORK_RELEASED]")
-  );
+  return /^\[SYSTEM_[^\]]+\]/i.test(message);
 };

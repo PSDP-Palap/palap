@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
 import MyJobsTab from "@/components/freelance/MyJobsTab";
@@ -17,8 +17,6 @@ import supabase from "@/utils/supabase";
 export const Route = createFileRoute("/_freelance/freelance/jobs")({
   component: JobsRoute
 });
-
-const DELIVERY_DONE_PREFIX = "[SYSTEM_DELIVERY_DONE]";
 
 function JobsRoute() {
   const { profile, session } = useUserStore();
@@ -59,13 +57,13 @@ function JobsRoute() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const loadMyServices = async () => {
+  const loadMyServices = useCallback(async () => {
     if (!currentUserId) return;
     try {
       setLoadingServices(true);
       const { data } = await supabase
         .from("services")
-        .select("*")
+        .select("*, pickup_address:addresses!pickup_address_id(*), dest_address:addresses!destination_address_id(*)")
         .eq("created_by", currentUserId)
         .order("created_at", { ascending: false });
       setServices((data as Service[]) || []);
@@ -74,19 +72,51 @@ function JobsRoute() {
     } finally {
       setLoadingServices(false);
     }
-  };
+  }, [currentUserId]);
 
   const createMyService = async (formData: any) => {
     if (!currentUserId) return;
     try {
       setCreating(true);
       setError(null);
+
+      let pickupAddressId = null;
+      let destinationAddressId = null;
+
+      // Create pickup address if provided
+      if (formData.pickupAddress) {
+        const { data: pAddr, error: pError } = await supabase
+          .from("addresses")
+          .insert({
+            name: formData.pickupAddress,
+            address_detail: formData.pickupAddress
+          })
+          .select("id")
+          .single();
+        if (pError) throw pError;
+        pickupAddressId = pAddr.id;
+      }
+
+      // Create destination address if provided
+      if (formData.destinationAddress) {
+        const { data: dAddr, error: dError } = await supabase
+          .from("addresses")
+          .insert({
+            name: formData.destinationAddress,
+            address_detail: formData.destinationAddress
+          })
+          .select("id")
+          .single();
+        if (dError) throw dError;
+        destinationAddressId = dAddr.id;
+      }
+
       const payload = {
         name: formData.name,
         price: Number(formData.price),
         category: formData.category,
-        pickup_address: formData.pickupAddress,
-        dest_address: formData.destinationAddress,
+        pickup_address_id: pickupAddressId,
+        destination_address_id: destinationAddressId,
         image_url: formData.imageUrl,
         created_by: currentUserId
       };
@@ -101,7 +131,7 @@ function JobsRoute() {
     }
   };
 
-  const loadDeliveryOrders = async () => {
+  const loadDeliveryOrders = useCallback(async () => {
     if (!currentUserId) return;
     try {
       setLoadingDeliveryOrders(true);
@@ -148,7 +178,7 @@ function JobsRoute() {
         orderIds.length
           ? supabase
               .from("chat_messages")
-              .select("order_id, message")
+              .select("order_id, content, message_type")
               .in("order_id", orderIds)
           : { data: [] }
       ]);
@@ -167,7 +197,11 @@ function JobsRoute() {
       );
       const doneSet = new Set(
         messages.data
-          ?.filter((m) => String(m.message).startsWith(DELIVERY_DONE_PREFIX))
+          ?.filter(
+            (m) =>
+              String(m.message_type).toUpperCase() === "SYSTEM_DELIVERY_DONE" ||
+              String(m.content).startsWith("[SYSTEM_DELIVERY_DONE]")
+          )
           .map((m) => String(m.order_id))
       );
 
@@ -182,13 +216,13 @@ function JobsRoute() {
           destinationLabel:
             aMap.get(String(o.destination_address_id)) || "Destination",
           price: Number(o.price || 0),
-          status: String(o.status || "pending"),
+          status: String(o.status || "WAITING"),
           freelancer_id: o.freelancer_id,
           freelance_id: o.freelance_id
         }));
 
       setAvailableDeliveryOrders(
-        normalized.filter((o) => !o.status || o.status === "pending")
+        normalized.filter((o) => !o.status || o.status === "WAITING")
       );
       setMyDeliveryOrders(
         normalized.filter(
@@ -202,18 +236,18 @@ function JobsRoute() {
     } finally {
       setLoadingDeliveryOrders(false);
     }
-  };
+  }, [currentUserId]);
 
-  const loadPendingHireRequests = async () => {
+  const loadPendingHireRequests = useCallback(async () => {
     if (!currentUserId) return;
     try {
       setLoadingPendingHireRequests(true);
-      // Fetch orders where status is 'waiting' and freelance_id is current user
+      // Fetch orders where status is 'WAITING' and linked service is owned by current user
       const { data: orders, error: ordersError } = await supabase
         .from("orders")
-        .select("*, services(name)")
-        .eq("freelance_id", currentUserId)
-        .eq("status", "waiting")
+        .select("*, services!inner(name, created_by)")
+        .eq("services.created_by", currentUserId)
+        .eq("status", "WAITING")
         .order("created_at", { ascending: false });
 
       if (ordersError) throw ordersError;
@@ -243,7 +277,9 @@ function JobsRoute() {
           p.full_name || p.email || "Customer"
         ])
       );
-      const rMap = new Map((rooms || []).map((r) => [String(r.order_id), r.id]));
+      const rMap = new Map(
+        (rooms || []).map((r) => [String(r.order_id), r.id])
+      );
 
       const pending = orders.map((order) => ({
         roomId: rMap.get(String(order.order_id)) || "",
@@ -260,17 +296,19 @@ function JobsRoute() {
     } finally {
       setLoadingPendingHireRequests(false);
     }
-  };
+  }, [currentUserId]);
 
-  const loadOngoingServiceJobs = async () => {
+  const loadOngoingServiceJobs = useCallback(async () => {
     if (!currentUserId) return;
     try {
       setLoadingOngoingServiceJobs(true);
+      // Fetch orders where status is 'ON_MY_WAY', 'IN_SERVICE', or 'COMPLETE' (but unpaid)
       const { data: orders, error: ordersError } = await supabase
         .from("orders")
         .select("*, services(name)")
         .eq("freelance_id", currentUserId)
-        .in("status", ["on_my_way", "in_service", "complete"]) // Include complete for visibility
+        .in("status", ["ON_MY_WAY", "IN_SERVICE", "COMPLETE"])
+        .is("payment_id", null) // Filter out orders that have already been paid
         .order("updated_at", { ascending: false });
 
       if (ordersError) throw ordersError;
@@ -300,7 +338,9 @@ function JobsRoute() {
           p.full_name || p.email || "Customer"
         ])
       );
-      const rMap = new Map((rooms || []).map((r) => [String(r.order_id), r.id]));
+      const rMap = new Map(
+        (rooms || []).map((r) => [String(r.order_id), r.id])
+      );
 
       const ongoing = orders.map((order) => ({
         roomId: rMap.get(String(order.order_id)) || "",
@@ -319,28 +359,31 @@ function JobsRoute() {
     } finally {
       setLoadingOngoingServiceJobs(false);
     }
-  };
+  }, [currentUserId]);
 
   const acceptHireRequest = async (request: PendingHireRequestItem) => {
     if (!currentUserId) return;
     try {
       setAcceptingHireRoomId(request.orderId);
-      // Update order status to 'on_my_way' (first step after waiting)
+      // Update order status to 'ON_MY_WAY' and assign freelance_id
       const { error: orderError } = await supabase
         .from("orders")
-        .update({ status: "on_my_way" })
+        .update({ 
+          status: "ON_MY_WAY",
+          freelance_id: currentUserId
+        })
         .eq("order_id", request.orderId);
 
       if (orderError) throw orderError;
 
-      const systemMessage =
-        "[SYSTEM_HIRE_ACCEPTED] Freelancer accepted your request and is on the way!";
+      const systemMessage = "Freelancer accepted your request and is on the way!";
       await supabase.from("chat_messages").insert([
         {
           room_id: request.roomId,
           order_id: request.orderId,
           sender_id: currentUserId,
-          message: systemMessage
+          content: systemMessage,
+          message_type: "SYSTEM_HIRE_ACCEPTED"
         }
       ]);
 
@@ -359,18 +402,19 @@ function JobsRoute() {
       setAcceptingHireRoomId(request.orderId);
       const { error: orderError } = await supabase
         .from("orders")
-        .update({ status: "reject" })
+        .update({ status: "REJECT" })
         .eq("order_id", request.orderId);
 
       if (orderError) throw orderError;
 
-      const systemMessage = "[SYSTEM_HIRE_DECLINED] Freelancer declined this request.";
+      const systemMessage = "Freelancer declined this request.";
       await supabase.from("chat_messages").insert([
         {
           room_id: request.roomId,
           order_id: request.orderId,
           sender_id: currentUserId,
-          message: systemMessage
+          content: systemMessage,
+          message_type: "SYSTEM_HIRE_DECLINED"
         }
       ]);
 
@@ -410,7 +454,7 @@ function JobsRoute() {
       const payload = {
         freelancer_id: currentUserId,
         freelance_id: currentUserId,
-        status: "ongoing"
+        status: "ON_MY_WAY"
       };
       const { error } = await supabase
         .from("orders")
@@ -432,7 +476,7 @@ function JobsRoute() {
       setCompletingOrderId(order.orderId);
       const { error: updateError } = await supabase
         .from("orders")
-        .update({ status: "done" })
+        .update({ status: "COMPLETE" })
         .eq("order_id", order.orderId);
       if (updateError) throw updateError;
 
@@ -442,14 +486,15 @@ function JobsRoute() {
         .eq("order_id", order.orderId);
       if (rooms && rooms.length > 0) {
         const roomIds = rooms.map((r) => r.id);
-        const doneMessageText = `${DELIVERY_DONE_PREFIX} ORDER:${order.orderId}`;
+        const doneMessageText = `ORDER:${order.orderId}`;
         for (const roomId of roomIds) {
           await supabase.from("chat_messages").insert([
             {
               room_id: roomId,
               order_id: order.orderId,
               sender_id: currentUserId,
-              message: doneMessageText
+              content: doneMessageText,
+              message_type: "SYSTEM_DELIVERY_DONE"
             }
           ]);
         }
@@ -463,7 +508,7 @@ function JobsRoute() {
     }
   };
 
-  const refreshJobBoard = async () => {
+  const refreshJobBoard = useCallback(async () => {
     setRefreshingJobBoard(true);
     await Promise.all([
       loadDeliveryOrders(),
@@ -473,11 +518,16 @@ function JobsRoute() {
     ]);
     setJobBoardLastUpdatedAt(new Date().toISOString());
     setRefreshingJobBoard(false);
-  };
+  }, [
+    loadDeliveryOrders,
+    loadMyServices,
+    loadPendingHireRequests,
+    loadOngoingServiceJobs
+  ]);
 
   useEffect(() => {
     refreshJobBoard();
-  }, [currentUserId]);
+  }, [currentUserId, refreshJobBoard]);
 
   return (
     <MyJobsTab

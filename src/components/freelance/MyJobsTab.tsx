@@ -193,20 +193,23 @@ const MyJobsTab = ({
     loadingOngoingServiceJobs;
 
   const getNextStatus = (currentStatus: string) => {
-    if (currentStatus === "on_my_way") return "in_service";
-    if (currentStatus === "in_service") return "complete";
+    const s = String(currentStatus || "").toUpperCase();
+    if (s === "ON_MY_WAY") return "IN_SERVICE";
+    if (s === "IN_SERVICE") return "COMPLETE";
     return null;
   };
 
   const getStatusLabel = (status: string) => {
+    const s = String(status || "").toUpperCase();
     const labels: Record<string, string> = {
-      on_my_way: "On My Way",
-      in_service: "In Service",
-      complete: "Complete",
-      reject: "Rejected",
-      waiting: "Waiting"
+      ON_MY_WAY: "On My Way",
+      IN_SERVICE: "In Service",
+      COMPLETE: "Complete",
+      REJECT: "Rejected",
+      WAITING: "Waiting",
+      CANCEL: "Cancelled"
     };
-    return labels[status] || status;
+    return labels[s] || status;
   };
 
   return (
@@ -347,7 +350,7 @@ const MyJobsTab = ({
                         Customer: {job.customerName}
                       </p>
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${job.status === "complete" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${String(job.status || "").toUpperCase() === "COMPLETE" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}
                       >
                         {getStatusLabel(job.status)}
                       </span>
@@ -471,7 +474,7 @@ const MyJobsTab = ({
                       Customer: {order.customerName}
                     </p>
                     <p className="text-xs text-gray-500">
-                      Status: {order.status}
+                      Status: {getStatusLabel(order.status)}
                     </p>
                     <p className="text-xs text-gray-500">
                       {order.pickupLabel} → {order.destinationLabel}
@@ -678,7 +681,15 @@ const MyJobsTab = ({
                     {Number(service.price ?? 0).toFixed(2)}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {service.pickup_address} → {service.dest_address}
+                    {typeof service.pickup_address === "object"
+                      ? `${service.pickup_address?.name || ""} ${service.pickup_address?.address_detail || ""}`.trim() ||
+                        service.pickup_address_id
+                      : service.pickup_address || service.pickup_address_id}{" "}
+                    →{" "}
+                    {typeof service.dest_address === "object"
+                      ? `${service.dest_address?.name || ""} ${service.dest_address?.address_detail || ""}`.trim() ||
+                        service.destination_address_id
+                      : service.dest_address || service.destination_address_id}
                   </p>
                 </div>
                 <p className="text-xs text-gray-400">

@@ -30,7 +30,7 @@ export const Route = createFileRoute("/service/")({
   loader: async () => {
     const { data, error } = await supabase
       .from("services")
-      .select("*")
+      .select("*, pickup_address:addresses!pickup_address_id(*), dest_address:addresses!destination_address_id(*)")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -45,6 +45,8 @@ export const Route = createFileRoute("/service/")({
         category: item.category ?? null,
         pickup_address: item.pickup_address ?? null,
         dest_address: item.dest_address ?? null,
+        pickup_address_id: item.pickup_address_id ?? null,
+        destination_address_id: item.destination_address_id ?? null,
         description: item.description ?? DEFAULT_DESCRIPTION,
         image_url: item.image_url ?? DEFAULT_IMAGE,
         creator_id:

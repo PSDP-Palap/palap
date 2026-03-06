@@ -1,7 +1,7 @@
+import Loading from "@/components/shared/Loading";
 import type { DeliveryTracking } from "@/types/payment";
 
 import { DeliveryTrackingWidget } from "./DeliveryTrackingWidget";
-import Loading from "@/components/shared/Loading";
 
 interface DeliveryTrackingViewProps {
   activeOrderId: string;
@@ -61,7 +61,7 @@ export function DeliveryTrackingView({
   handlePay,
   isPaying = false
 }: DeliveryTrackingViewProps) {
-  const isCompleteUnpaid = status === "complete";
+  const isCompleteUnpaid = status === "COMPLETE";
 
   return (
     <div className="min-h-screen bg-[#F9E6D8] pt-24 pb-10">
@@ -80,7 +80,7 @@ export function DeliveryTrackingView({
               <span
                 className={`px-3 py-1 rounded-full text-xs font-black uppercase ${accepted ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}
               >
-                {accepted ? "Freelancer Accepted" : "Waiting for Freelance"}
+                {accepted ? "Freelancer Accepted" : "WAITING FOR FREELANCE"}
               </span>
             </div>
           </div>
@@ -92,7 +92,8 @@ export function DeliveryTrackingView({
                   Payment Required
                 </h3>
                 <p className="text-sm text-orange-700 font-bold">
-                  The freelancer has completed the work. Please release the payment of ฿ {trackingData?.price.toFixed(2)}.
+                  The freelancer has completed the work. Please release the
+                  payment of ฿ {trackingData?.price.toFixed(2)}.
                 </p>
               </div>
               <button
@@ -270,7 +271,7 @@ export function DeliveryTrackingView({
                   </div>
                   <div>
                     <p className="text-gray-500">Status</p>
-                    <p className="font-bold text-[#4A2600]">
+                    <p className="font-bold text-[#4A2600] uppercase">
                       {status.replaceAll("_", " ")}
                     </p>
                   </div>
@@ -348,7 +349,7 @@ export function DeliveryTrackingView({
                     <div className="space-y-2 text-sm text-[#4A2600]">
                       <p
                         className={
-                          status === "pending" || !trackingData.freelanceId
+                          status === "PENDING" || !trackingData.freelanceId
                             ? "font-black text-orange-600"
                             : ""
                         }
@@ -386,13 +387,6 @@ export function DeliveryTrackingView({
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => router.navigate({ to: "/order-history" })}
-              className="px-5 py-2 rounded-lg bg-[#A03F00] text-white font-black hover:bg-[#8a3600]"
-            >
-              Back to History
-            </button>
-            <button
-              type="button"
               onClick={() => router.navigate({ to: "/" })}
               className="px-5 py-2 rounded-lg bg-gray-100 text-gray-800 font-bold hover:bg-gray-200"
             >
@@ -418,7 +412,7 @@ export function DeliveryTrackingView({
       )}
 
       {showDeliveredNotice && (
-        <div className="fixed inset-0 z-[100] bg-black/35 flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-100 bg-black/35 flex items-center justify-center px-4">
           <div className="w-full max-w-md rounded-xl bg-white border border-orange-200 shadow-2xl p-6 text-center">
             <p className="text-2xl font-black text-green-600 uppercase">
               Order Succeed

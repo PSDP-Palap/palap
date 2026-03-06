@@ -27,8 +27,6 @@ type OrderDetail = {
   destinationDetail: string;
 };
 
-const DELIVERY_DONE_PREFIX = "[SYSTEM_DELIVERY_DONE]";
-
 function RouteComponent() {
   const { orderId } = Route.useParams();
   const router = useRouter();
@@ -109,9 +107,11 @@ function RouteComponent() {
             : Promise.resolve({ data: [] as any[] }),
           supabase
             .from("chat_messages")
-            .select("order_id, message")
+            .select("order_id, content, message_type")
             .eq("order_id", orderId)
-            .like("message", `${DELIVERY_DONE_PREFIX} ORDER:%`)
+            .or(
+              "message_type.eq.SYSTEM_DELIVERY_DONE,content.like.[SYSTEM_DELIVERY_DONE] ORDER:%"
+            )
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle()
@@ -124,16 +124,16 @@ function RouteComponent() {
           ])
         );
 
-        const rawStatus = String(row.status || "").toLowerCase();
+        const rawStatus = String(row.status || "").toUpperCase();
         const doneFromMarker =
           !!doneMarkerRow &&
           (!!String((doneMarkerRow as any)?.order_id || "") ||
-            !!getOrderIdFromSystemMessage(String((doneMarkerRow as any)?.message || "")));
+            !!getOrderIdFromSystemMessage(String((doneMarkerRow as any)?.content || "")));
 
         const normalizedStatus =
           doneFromMarker || isCompletedOrderStatus(rawStatus)
-            ? "delivered"
-            : rawStatus || "waiting";
+            ? "COMPLETE"
+            : rawStatus || "WAITING";
 
         setDetail({
           orderId: String(row.order_id),
@@ -200,7 +200,7 @@ function RouteComponent() {
               <h1 className="text-3xl font-black text-[#4A2600]">Order Detail</h1>
               <p className="text-sm text-orange-700/80 font-semibold">Order ID: {detail.orderId}</p>
             </div>
-            <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${detail.status === "delivered" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+            <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${detail.status === "COMPLETE" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
               {detail.status.replaceAll("_", " ")}
             </span>
           </div>
@@ -247,7 +247,7 @@ function RouteComponent() {
             >
               Back to Order History
             </button>
-            {detail.status !== "delivered" && (
+            {detail.status !== "COMPLETE" && (
               <>
                 <button
                   type="button"
@@ -262,13 +262,13 @@ function RouteComponent() {
                 >
                   Open Live Tracking
                 </button>
-                {detail.status !== "cancelled" && (
+                {detail.status !== "CANCEL" && (
                   <button
                     type="button"
                     onClick={async () => {
                       await supabase
                         .from("orders")
-                        .update({ status: "cancelled" })
+                        .update({ status: "CANCEL" })
                         .eq("order_id", detail.orderId);
                       window.location.reload();
                     }}

@@ -11,6 +11,7 @@ interface DeliveryTrackingWidgetProps {
   status: string;
   trackingLoading: boolean;
   loadTracking: (id: string) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   router: any;
   routeUrl: string;
 }
@@ -31,10 +32,10 @@ export function DeliveryTrackingWidget({
     <aside
       data-floating-widget
       data-floating-corner="bottom-right"
-      className="fixed bottom-4 left-4 right-4 md:left-auto md:right-6 z-[70]"
+      className="fixed bottom-4 left-4 right-4 md:left-auto md:right-6 z-70"
     >
       {isTrackingWidgetOpen && (
-        <div className="mb-3 w-[360px] max-w-[calc(100vw-2rem)] max-h-[70vh] rounded-2xl border border-orange-200 bg-[#F9E6D8] text-[#4A2600] shadow-2xl overflow-hidden">
+        <div className="mb-3 w-90 max-w-[calc(100vw-2rem)] max-h-[70vh] rounded-2xl border border-orange-200 bg-[#F9E6D8] text-[#4A2600] shadow-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-orange-200 bg-[#FF914D] flex items-center justify-between gap-2">
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-white/85">
@@ -47,7 +48,7 @@ export function DeliveryTrackingWidget({
             <span
               className={`inline-flex px-2 py-1 rounded-full text-[10px] font-black uppercase ${accepted ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"}`}
             >
-              {accepted ? "Serving" : "Waiting"}
+              {accepted ? "Serving" : "WAITING"}
             </span>
           </div>
 
@@ -65,8 +66,8 @@ export function DeliveryTrackingWidget({
               </p>
               <p>
                 <span className="text-gray-500">Status:</span>{" "}
-                <span className="font-bold">
-                  {status.replaceAll("_", " ") || "waiting"}
+                <span className="font-bold uppercase">
+                  {status.replaceAll("_", " ") || "WAITING"}
                 </span>
               </p>
               <p>

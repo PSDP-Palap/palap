@@ -1,3 +1,5 @@
+import type { Address } from "./address";
+
 export type ServiceCategory = "DELIVERY" | "SHOPPING" | "CARE";
 
 export interface Service {
@@ -6,8 +8,10 @@ export interface Service {
   name: string;
   price: number;
   category: ServiceCategory;
-  pickup_address?: string | null;
-  dest_address?: string | null;
+  pickup_address_id?: string | null;
+  destination_address_id?: string | null;
+  pickup_address?: Address | null;
+  dest_address?: Address | null;
   detail_1?: string | null;
   detail_2?: string | null;
   description?: string | null;
@@ -31,8 +35,11 @@ export interface ChatRoomListItem {
 
 export interface ChatMessage {
   id: string;
+  room_id: string;
+  order_id: string;
   sender_id: string;
-  message: string;
+  content: string;
+  message_type: "TEXT" | "IMAGE" | "SYSTEM";
   created_at: string;
 }
 

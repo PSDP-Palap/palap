@@ -94,7 +94,7 @@ The database utilizes UUIDs as primary keys and enforces referential integrity t
   - `freelances`: Links a profile to `job_category`, `status`, `bio`, and `rating`.
 - **Commerce:**
   - `products`: Created by Admins, track inventory (`qty`), `price`, and `pickup_address_id`.
-  - `services`: Created by Admins or Freelancers (`created_by`), includes `pickup_address` and `dest_address`.
+  - `services`: Created by Admins or Freelancers (`created_by`), includes `pickup_address` and `destination_address_id`.
 - **Order Management:**
   - `orders`: The central hub linking `customer_id`, `freelance_id`, `service_id`/`product_id`, and addresses. Tracks `status` and `price`.
   - `transactions`: Payment tracking linked to orders (`amount`, `payment_method`, `status`).

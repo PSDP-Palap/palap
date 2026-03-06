@@ -16,15 +16,13 @@ export const Route = createFileRoute("/_authenticated/checkout")({
 });
 
 const ORDER_CREATE_STATUS_CANDIDATES = [
-  "waiting",
-  "pending",
-  "looking_freelancer",
-  "created",
-  "new",
-  "open",
-  "requested",
-  "serving",
-  "in_progress"
+  "WAITING",
+  "PENDING",
+  "LOOKING_FREELANCER",
+  "CREATED",
+  "NEW",
+  "OPEN",
+  "REQUESTED"
 ];
 
 function CheckoutComponent() {
@@ -155,8 +153,8 @@ function CheckoutComponent() {
         name: selectedProduct.name,
         price: total,
         category: "DELIVERY",
-        pickup_address: savedAddress.address_detail || savedAddress.name,
-        dest_address: savedAddress.address_detail || savedAddress.name,
+        pickup_address_id: pickupAddressId,
+        destination_address_id: destinationAddressId,
         image_url: selectedProduct.image_url
       };
 

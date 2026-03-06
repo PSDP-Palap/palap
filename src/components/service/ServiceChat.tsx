@@ -2,9 +2,9 @@
 import { Send } from "lucide-react";
 import type { RefObject } from "react";
 
-import type { ChatMessage, ChatRoomListItem } from "@/types/service";
 import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
+import type { ChatMessage, ChatRoomListItem } from "@/types/service";
 
 interface ServiceChatProps {
   chatRoomSearch: string;
@@ -27,7 +27,6 @@ interface ServiceChatProps {
   chatLoading: boolean;
   messages: ChatMessage[];
   isCurrentUserFreelancerInRoom: boolean;
-  extractImageUrl: (msg: string | null | undefined) => string | null;
   chatError: string | null;
   imageInputRef: RefObject<HTMLInputElement | null>;
   onImageSelected: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
@@ -50,7 +49,13 @@ interface ServiceChatProps {
   onApproveWork?: () => Promise<void>;
   onDeclineWork?: () => Promise<void>;
   onPayForCompletedWork?: () => Promise<void>;
-  workflowBusyAction?: "pay" | "submit" | "approve" | "decline" | "complete_pay" | null;
+  workflowBusyAction?:
+    | "pay"
+    | "submit"
+    | "approve"
+    | "decline"
+    | "complete_pay"
+    | null;
 }
 
 export function ServiceChat({
@@ -70,7 +75,6 @@ export function ServiceChat({
   chatLoading,
   messages,
   isCurrentUserFreelancerInRoom,
-  extractImageUrl,
   chatError,
   imageInputRef,
   onImageSelected,
@@ -97,15 +101,21 @@ export function ServiceChat({
 }: ServiceChatProps) {
   const { profile, session } = useUserStore();
   const currentUserId = profile?.id || session?.user?.id || null;
-  const formatMessageText = (rawMessage: string | null | undefined) => {
+  const formatMessageText = (
+    rawMessage: string | null | undefined,
+    type?: string
+  ) => {
     const message = String(rawMessage || "");
-    if (!message.startsWith("[SYSTEM_")) return message;
-
-    return message
-      .replace(/^\[[^\]]+\]\s*/i, "")
-      .replace(/\b(SERVICE|PRICE|CUSTOMER|FREELANCER):[^\s]+/gi, "")
-      .replace(/\s{2,}/g, " ")
-      .trim() || "System update";
+    const upperType = String(type || "").toUpperCase();
+    if (upperType.startsWith("SYSTEM_")) {
+      return (
+        message
+          .replace(/\b(SERVICE|PRICE|CUSTOMER|FREELANCER|ORDER):[^\s]+/gi, "")
+          .replace(/\s{2,}/g, " ")
+          .trim() || "System update"
+      );
+    }
+    return message;
   };
 
   return (
@@ -238,12 +248,14 @@ export function ServiceChat({
                       <p className="text-[11px] font-black uppercase tracking-wide text-orange-700/80">
                         Work Approval Flow
                       </p>
-                      <p className="text-xs text-gray-600 mt-0.5 break-words">
-                        {workflowStatusText || "Track work progress, review, and release payment."}
+                      <p className="text-xs text-gray-600 mt-0.5 wrap-break-word">
+                        {workflowStatusText ||
+                          "Track work progress, review, and release payment."}
                       </p>
                       {workflowAgreedPrice !== null && (
                         <p className="text-xs text-[#4A2600] font-bold mt-1">
-                          Agreed price: ฿ {Number(workflowAgreedPrice || 0).toFixed(2)}
+                          Agreed price: ฿{" "}
+                          {Number(workflowAgreedPrice || 0).toFixed(2)}
                         </p>
                       )}
                     </div>
@@ -258,7 +270,9 @@ export function ServiceChat({
                           disabled={workflowBusyAction !== null}
                           className="px-3 py-1.5 rounded-md bg-[#A03F00] text-white text-xs font-black disabled:bg-gray-300"
                         >
-                          {workflowBusyAction === "pay" ? "Processing..." : "Pay & Start Work"}
+                          {workflowBusyAction === "pay"
+                            ? "Processing..."
+                            : "Pay & Start Work"}
                         </button>
                       )}
 
@@ -271,7 +285,9 @@ export function ServiceChat({
                           disabled={workflowBusyAction !== null}
                           className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs font-black disabled:bg-gray-300"
                         >
-                          {workflowBusyAction === "submit" ? "Submitting..." : "Submit Work"}
+                          {workflowBusyAction === "submit"
+                            ? "Submitting..."
+                            : "Submit Work"}
                         </button>
                       )}
 
@@ -284,7 +300,9 @@ export function ServiceChat({
                           disabled={workflowBusyAction !== null}
                           className="px-3 py-1.5 rounded-md bg-green-600 text-white text-xs font-black disabled:bg-gray-300"
                         >
-                          {workflowBusyAction === "approve" ? "Approving..." : "Approve Work"}
+                          {workflowBusyAction === "approve"
+                            ? "Approving..."
+                            : "Approve Work"}
                         </button>
                       )}
 
@@ -297,7 +315,9 @@ export function ServiceChat({
                           disabled={workflowBusyAction !== null}
                           className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-black disabled:bg-gray-300"
                         >
-                          {workflowBusyAction === "decline" ? "Sending..." : "Request Revision"}
+                          {workflowBusyAction === "decline"
+                            ? "Sending..."
+                            : "Request Revision"}
                         </button>
                       )}
 
@@ -310,7 +330,9 @@ export function ServiceChat({
                           disabled={workflowBusyAction !== null}
                           className="px-3 py-1.5 rounded-md bg-[#FF914D] text-white text-xs font-black shadow-md hover:bg-[#e67e3d] transition-all disabled:bg-gray-300"
                         >
-                          {workflowBusyAction === "complete_pay" ? "Processing..." : "Pay Now"}
+                          {workflowBusyAction === "complete_pay"
+                            ? "Processing..."
+                            : "Pay Now"}
                         </button>
                       )}
                     </div>
@@ -322,9 +344,7 @@ export function ServiceChat({
                 ref={messagesContainerRef}
                 className="bg-[#F3F4F6] rounded-xl border border-orange-100 flex-1 min-h-0 p-3 md:p-4 overflow-y-auto space-y-3"
               >
-                {chatLoading && (
-                  <Loading fullScreen={false} size={80} />
-                )}
+                {chatLoading && <Loading fullScreen={false} size={80} />}
                 {!chatLoading && messages.length === 0 && (
                   <p className="text-sm text-gray-500">
                     No message yet. Start chatting with the{" "}
@@ -335,7 +355,7 @@ export function ServiceChat({
                 {messages.map((message) => {
                   const isMine =
                     String(message.sender_id) === String(currentUserId);
-                  const imageUrl = extractImageUrl(message.message);
+                  const isImage = message.message_type === "IMAGE";
                   return (
                     <div
                       key={String(message.id)}
@@ -344,15 +364,18 @@ export function ServiceChat({
                       <div
                         className={`max-w-[50%] rounded-2xl px-4 py-2 text-sm border shadow-sm wrap-break-word overflow-hidden ${isMine ? "bg-[#F2A779] border-orange-300 text-[#4A2600]" : "bg-white border-orange-200 text-[#4A2600]"}`}
                       >
-                        {imageUrl ? (
+                        {isImage ? (
                           <img
-                            src={imageUrl}
+                            src={message.content}
                             alt="Chat image"
                             className="max-h-64 w-auto rounded-lg border border-orange-200 object-contain"
                           />
                         ) : (
                           <p className="whitespace-pre-wrap break-all">
-                            {formatMessageText(message.message)}
+                            {formatMessageText(
+                              message.content,
+                              message.message_type
+                            )}
                           </p>
                         )}
                         <p className="text-[10px] mt-1 opacity-70">

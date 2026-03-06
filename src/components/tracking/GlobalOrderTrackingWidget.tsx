@@ -7,7 +7,6 @@ import toast from "react-hot-toast";
 import Loading from "@/components/shared/Loading";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useUserStore } from "@/stores/useUserStore";
-import type { DeliveryTracking } from "@/types/payment";
 import {
   getOrderIdFromSystemMessage,
   isCompletedOrderStatus
@@ -16,14 +15,13 @@ import supabase, { isUuidLike } from "@/utils/supabase";
 
 const WAITING_STATUS_SET = new Set([
   "",
-  "waiting",
-  "pending",
-  "new",
-  "open",
-  "requested",
-  "looking_freelancer"
+  "WAITING",
+  "PENDING",
+  "NEW",
+  "OPEN",
+  "REQUESTED",
+  "LOOKING_FREELANCER"
 ]);
-const DELIVERY_DONE_PREFIX = "[SYSTEM_DELIVERY_DONE]";
 
 function GlobalOrderTrackingWidget() {
   const router = useRouter();
@@ -41,10 +39,14 @@ function GlobalOrderTrackingWidget() {
   const isInitialized = useUserStore((s) => s.isInitialized);
   const isCustomer = String(userRole || "").toLowerCase() === "customer";
 
-  const { activeOrderId, setActiveOrderId } = useOrderStore();
+  const {
+    activeOrderId,
+    setActiveOrderId,
+    activeOrderTracking: tracking,
+    setActiveOrderTracking: setTracking
+  } = useOrderStore();
 
   const [ongoingOrderIds, setOngoingOrderIds] = useState<string[]>([]);
-  const [tracking, setTracking] = useState<DeliveryTracking | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -91,7 +93,9 @@ function GlobalOrderTrackingWidget() {
 
         const { data: orderRows, error: orderError } = await supabase
           .from("orders")
-          .select("order_id, status, created_at, customer_id, freelance_id, payment_id")
+          .select(
+            "order_id, status, created_at, customer_id, freelance_id, payment_id"
+          )
           .or(
             `customer_id.eq.${currentUserId},freelance_id.eq.${currentUserId}`
           )
@@ -104,8 +108,10 @@ function GlobalOrderTrackingWidget() {
 
         const { data: doneRows } = await supabase
           .from("chat_messages")
-          .select("order_id, message")
-          .like("message", `${DELIVERY_DONE_PREFIX} ORDER:%`)
+          .select("order_id, content, message_type")
+          .or(
+            "message_type.eq.SYSTEM_DELIVERY_DONE,content.like.[SYSTEM_DELIVERY_DONE] ORDER:%"
+          )
           .order("created_at", { ascending: false })
           .limit(500);
 
@@ -114,7 +120,7 @@ function GlobalOrderTrackingWidget() {
             .map((row: any) => {
               const directId = String(row?.order_id || "").trim();
               if (directId) return directId;
-              return getOrderIdFromSystemMessage(String(row?.message || ""));
+              return getOrderIdFromSystemMessage(String(row?.content || ""));
             })
             .filter(Boolean)
         );
@@ -128,9 +134,14 @@ function GlobalOrderTrackingWidget() {
           if (excludedSet.has(rowOrderId)) return false;
           if (doneOrderSet.has(rowOrderId)) return false;
 
-          const rawStatus = String(row?.status || "").toLowerCase();
+          const rawStatus = String(row?.status || "").toUpperCase();
           const isFinished = isCompletedOrderStatus(rawStatus, row?.payment_id);
-          // Note: status 'complete' means freelancer finished but customer hasn't paid yet
+
+          // Allow complete status if payment is still pending
+          if (rawStatus === "COMPLETE" && !row?.payment_id) {
+            return true;
+          }
+
           if (isFinished) {
             return false;
           }
@@ -189,35 +200,37 @@ function GlobalOrderTrackingWidget() {
           ? String(orderRow.service_id)
           : null;
 
-        const [{ data: addressRows }, { data: productRow }, { data: serviceRow }] = await Promise.all(
-          [
-            [pickupAddressId, destinationAddressId].filter(Boolean).length > 0
-              ? supabase
-                  .from("addresses")
-                  .select("id, name, address_detail")
-                  .in(
-                    "id",
-                    [pickupAddressId, destinationAddressId].filter(
-                      Boolean
-                    ) as string[]
-                  )
-              : Promise.resolve({ data: [] as any[] }),
-            orderRow.product_id
-              ? supabase
-                  .from("products")
-                  .select("product_id, name")
-                  .eq("product_id", String(orderRow.product_id))
-                  .maybeSingle()
-              : Promise.resolve({ data: null as any }),
-            orderRow.service_id
-              ? supabase
-                  .from("services")
-                  .select("service_id, name")
-                  .eq("service_id", String(orderRow.service_id))
-                  .maybeSingle()
-              : Promise.resolve({ data: null as any })
-          ]
-        );
+        const [
+          { data: addressRows },
+          { data: productRow },
+          { data: serviceRow }
+        ] = await Promise.all([
+          [pickupAddressId, destinationAddressId].filter(Boolean).length > 0
+            ? supabase
+                .from("addresses")
+                .select("id, name, address_detail")
+                .in(
+                  "id",
+                  [pickupAddressId, destinationAddressId].filter(
+                    Boolean
+                  ) as string[]
+                )
+            : Promise.resolve({ data: [] as any[] }),
+          orderRow.product_id
+            ? supabase
+                .from("products")
+                .select("product_id, name")
+                .eq("product_id", String(orderRow.product_id))
+                .maybeSingle()
+            : Promise.resolve({ data: null as any }),
+          orderRow.service_id
+            ? supabase
+                .from("services")
+                .select("service_id, name")
+                .eq("service_id", String(orderRow.service_id))
+                .maybeSingle()
+            : Promise.resolve({ data: null as any })
+        ]);
 
         const normalizedFreelanceId =
           (orderRow as any)?.freelance_id ??
@@ -261,7 +274,7 @@ function GlobalOrderTrackingWidget() {
           .from("chat_messages")
           .select("id")
           .eq("order_id", orderId)
-          .like("message", "[SYSTEM_DELIVERY_DONE] ORDER:%")
+          .like("content", "[SYSTEM_DELIVERY_DONE] ORDER:%")
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -269,18 +282,18 @@ function GlobalOrderTrackingWidget() {
         const addressMap = new Map(
           (addressRows ?? []).map((row: any) => [String(row.id), row])
         );
-        const rawStatus = String(orderRow.status || "").toLowerCase();
-        const isAssigned = !!freelanceId;
-        const hasDoneMarker = !!doneMarkerRow;
-
+        const rawStatus = String(orderRow.status || "").toUpperCase();
         const nextStatus =
-          hasDoneMarker || isCompletedOrderStatus(rawStatus, orderRow.payment_id)
-            ? "delivered"
-            : isAssigned && WAITING_STATUS_SET.has(rawStatus)
-              ? "serving"
-              : rawStatus || (isAssigned ? "serving" : "waiting");
+          hasDoneMarker ||
+          isCompletedOrderStatus(rawStatus, orderRow.payment_id)
+            ? "COMPLETE"
+            : rawStatus || "WAITING";
 
-        if (isCompletedOrderStatus(nextStatus, orderRow.payment_id)) {
+        // Only clear and close if it's REALLY finished (paid or marked as done)
+        if (
+          isCompletedOrderStatus(nextStatus, orderRow.payment_id) &&
+          orderRow.payment_id
+        ) {
           suppressAutoPickRef.current = true;
           useOrderStore.getState().setActiveOrderId(null);
           setTracking(null);
@@ -291,6 +304,9 @@ function GlobalOrderTrackingWidget() {
         setTracking({
           orderId: String(orderRow.order_id),
           serviceId,
+          customerId: orderRow.customer_id
+            ? String(orderRow.customer_id)
+            : null,
           roomId: roomRow?.id ? String(roomRow.id) : null,
           status: nextStatus,
           createdAt: orderRow.created_at,
@@ -501,18 +517,19 @@ function GlobalOrderTrackingWidget() {
     !userId ||
     !isCustomer ||
     isActiveChatPage ||
-    isPaymentConfirmPage
+    isPaymentConfirmPage ||
+    (ongoingOrderIds.length === 0 && !activeOrderId)
   ) {
     return null;
   }
 
   const statusDisplay =
-    String(tracking?.status || "").replaceAll("_", " ") || "waiting";
+    String(tracking?.status || "").replaceAll("_", " ") || "WAITING";
   const isActuallyWaiting = tracking
     ? !tracking.freelanceId ||
-      WAITING_STATUS_SET.has(String(tracking.status || "").toLowerCase())
+      WAITING_STATUS_SET.has(String(tracking.status || "").toUpperCase())
     : true;
-  const isCompletedUnpaid = tracking?.status === "complete";
+  const isCompletedUnpaid = tracking?.status === "COMPLETE";
 
   return (
     <aside
@@ -540,7 +557,7 @@ function GlobalOrderTrackingWidget() {
               <span
                 className={`inline-flex px-2 py-1 rounded-full text-[10px] font-black uppercase ${isActuallyWaiting ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}
               >
-                {isActuallyWaiting ? "Waiting" : "Serving"}
+                {isActuallyWaiting ? "WAITING" : "ON_MY_WAY"}
               </span>
               <span className="text-white group-hover:translate-x-1 transition-transform">
                 →
@@ -578,14 +595,17 @@ function GlobalOrderTrackingWidget() {
                       Action Required
                     </p>
                     <p className="text-[11px] text-orange-700 font-bold leading-tight">
-                      Freelancer has marked the work as complete. Please release the payment.
+                      Freelancer has marked the work as complete. Please release
+                      the payment.
                     </p>
                     <button
                       onClick={handlePay}
                       disabled={loading}
                       className="w-full mt-2 py-2 rounded-lg bg-[#FF914D] text-white text-xs font-black shadow-md hover:bg-[#e67e3d] transition-all disabled:bg-gray-300"
                     >
-                      {loading ? "Processing..." : "Pay Now ฿ " + tracking.price.toFixed(2)}
+                      {loading
+                        ? "Processing..."
+                        : "Pay Now ฿ " + tracking.price.toFixed(2)}
                     </button>
                   </div>
                 )}
@@ -600,11 +620,15 @@ function GlobalOrderTrackingWidget() {
                   </p>
                   <p>
                     <span className="text-gray-500">Status:</span>{" "}
-                    <span className="font-bold text-orange-700 uppercase">{statusDisplay}</span>
+                    <span className="font-bold text-orange-700 uppercase">
+                      {statusDisplay}
+                    </span>
                   </p>
                   <p>
                     <span className="text-gray-500">Price:</span>{" "}
-                    <span className="font-bold">฿ {tracking.price.toFixed(2)}</span>
+                    <span className="font-bold">
+                      ฿ {tracking.price.toFixed(2)}
+                    </span>
                   </p>
                 </div>
                 <div className="rounded-lg border border-orange-200 bg-white p-3 text-xs space-y-2">

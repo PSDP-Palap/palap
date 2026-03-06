@@ -381,7 +381,7 @@ const FloatingChatWidget = () => {
             ? await withTimeout(
                 supabase
                   .from("chat_messages")
-                  .select("room_id, message, created_at, sender_id")
+                  .select("room_id, content, created_at, sender_id, message_type")
                   .in("room_id", roomIds)
                   .order("created_at", { ascending: false }),
                 12000
@@ -390,17 +390,19 @@ const FloatingChatWidget = () => {
 
         const latestMessageByRoom = new Map<
           string,
-          { message: string; created_at: string }
+          { content: string; created_at: string; message_type: string }
         >();
         const latestNonSelfSenderByRoom = new Map<string, string>();
         (messageRows ?? []).forEach((row: any) => {
           const key = String(row.room_id);
           if (latestMessageByRoom.has(key)) return;
-          if (isSystemMessage(row.message)) return;
+          const upperType = String(row.message_type || "").toUpperCase();
+          if (upperType.startsWith("SYSTEM_")) return;
 
           latestMessageByRoom.set(key, {
-            message: row.message ?? "",
-            created_at: row.created_at
+            content: row.content ?? "",
+            created_at: row.created_at,
+            message_type: upperType
           });
 
           const senderId = String(row.sender_id || "");
@@ -522,7 +524,10 @@ const FloatingChatWidget = () => {
             customerAvatarUrl: customer?.avatarUrl || null,
             freelancerName: freelancer?.name || "Freelancer",
             freelancerAvatarUrl: freelancer?.avatarUrl || null,
-            lastMessage: cleanPreviewMessage(latest?.message),
+            lastMessage:
+              latest?.message_type === "IMAGE"
+                ? "Image"
+                : cleanPreviewMessage(latest?.content, latest?.message_type),
             lastAt:
               latest?.created_at ||
               item.last_message_at ||

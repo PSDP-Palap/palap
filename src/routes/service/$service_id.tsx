@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
 import { ServiceDetailView } from "@/components/service/ServiceDetailView";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { useUserStore } from "@/stores/useUserStore";
 import type { PendingHireRoomView } from "@/types/service";
 import { withTimeout } from "@/utils/helpers";
@@ -15,7 +16,7 @@ export const Route = createFileRoute("/service/$service_id")({
     const { data: serviceData, error: serviceError } = await withTimeout(
       supabase
         .from("services")
-        .select("*, freelancer:profiles(*)")
+        .select("*, freelancer:profiles(*), pickup_address:addresses!pickup_address_id(*), dest_address:addresses!destination_address_id(*)")
         .eq("service_id", service_id)
         .maybeSingle()
     );
@@ -33,7 +34,7 @@ export const Route = createFileRoute("/service/$service_id")({
       const { data: fallbackData, error: fallbackError } = await withTimeout(
         supabase
           .from("services")
-          .select("*")
+          .select("*, pickup_address:addresses!pickup_address_id(*), dest_address:addresses!destination_address_id(*)")
           .eq("service_id", service_id)
           .maybeSingle()
       );
@@ -62,6 +63,7 @@ export const Route = createFileRoute("/service/$service_id")({
 
     // 2. Load initial hire data if logged in
     const { profile, session } = useUserStore.getState();
+    const { activeOrderId: globalActiveOrderId, activeOrderTracking } = useOrderStore.getState();
     const currentUserId = profile?.id || session?.user?.id || null;
 
     const initialHireStatus = {
@@ -75,24 +77,24 @@ export const Route = createFileRoute("/service/$service_id")({
     if (currentUserId && creatorId) {
       const isServiceOwner = String(currentUserId) === String(creatorId);
 
-      // Find the most recent active order (exclude done, reject, cancelled)
-      const { data: activeOrder } = await withTimeout(
-        supabase
-          .from("orders")
-          .select("order_id, status")
-          .eq("service_id", service_id)
-          .or(`customer_id.eq.${currentUserId},freelance_id.eq.${currentUserId}`)
-          .in("status", ["waiting", "on_my_way", "in_service", "complete"])
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle()
+      // check if global tracking belongs to THIS service
+      const isTrackingThisService = !!(
+        activeOrderTracking && 
+        String(activeOrderTracking.serviceId) === String(service_id)
       );
 
-      if (activeOrder) {
-        initialHireStatus.orderId = activeOrder.order_id;
-        initialHireStatus.orderStatus = activeOrder.status;
+      if (isTrackingThisService && activeOrderTracking) {
+        initialHireStatus.orderId = activeOrderTracking.orderId;
+        initialHireStatus.orderStatus = activeOrderTracking.status;
         initialHireStatus.isHireRequested = true;
-        initialHireStatus.isHireAccepted = activeOrder.status !== "waiting";
+        initialHireStatus.isHireAccepted = activeOrderTracking.status !== "WAITING";
+      } else if (globalActiveOrderId && !isServiceOwner) {
+        // If there's a global active order but we don't have details yet, 
+        // we can still assume a hire state if IDs match (though tracking is better)
+        if (String(globalActiveOrderId) === String(service_id)) {
+           initialHireStatus.isHireRequested = true;
+           initialHireStatus.isHireAccepted = true;
+        }
       }
 
       if (isServiceOwner) {
@@ -121,7 +123,7 @@ export const Route = createFileRoute("/service/$service_id")({
               withTimeout(
                 supabase
                   .from("chat_messages")
-                  .select("room_id, message, created_at")
+                  .select("room_id, content, created_at, message_type")
                   .in("room_id", roomIds)
                   .order("created_at", { ascending: true })
               )
@@ -202,12 +204,7 @@ const DEFAULT_HIRE_MESSAGE =
 const SYSTEM_REQUEST_PREFIX = "[SYSTEM_HIRE_REQUEST]";
 const SYSTEM_ACCEPT_PREFIX = "[SYSTEM_HIRE_ACCEPTED]";
 const SYSTEM_DECLINE_PREFIX = "[SYSTEM_HIRE_DECLINED]";
-
-const getRoleValue = (value: any) => {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && value.length > 0) return value[0];
-  return null;
-};
+const SYSTEM_CANCEL_PREFIX = "[SYSTEM_HIRE_CANCELED]";
 
 const toSystemRequestMessage = (text: string) =>
   `${SYSTEM_REQUEST_PREFIX} ${text}`;
@@ -215,31 +212,48 @@ const toSystemAcceptMessage = (text: string) =>
   `${SYSTEM_ACCEPT_PREFIX} ${text}`;
 const toSystemDeclineMessage = (text: string) =>
   `${SYSTEM_DECLINE_PREFIX} ${text}`;
-const stripSystemPrefix = (message: string | null | undefined) =>
-  (message || "")
-    .replace(SYSTEM_REQUEST_PREFIX, "")
-    .replace(SYSTEM_ACCEPT_PREFIX, "")
-    .replace(SYSTEM_DECLINE_PREFIX, "")
-    .replace(/\b(SERVICE|PRICE|CUSTOMER|FREELANCER):[^\s]+/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+const toSystemCancelMessage = (text: string) =>
+  `${SYSTEM_CANCEL_PREFIX} ${text}`;
 
 const deriveHireStateFromMessages = (rows: any[]) => {
   let nextState: "idle" | "requested" | "accepted" = "idle";
   let requestMessage = "";
 
   for (const row of rows || []) {
-    const message = String(row?.message || "");
-    if (message.startsWith(SYSTEM_REQUEST_PREFIX)) {
+    const type = String(row?.message_type || "").toUpperCase();
+    const content = String(row?.content || "");
+
+    if (type === "SYSTEM") {
+      if (content.startsWith(SYSTEM_REQUEST_PREFIX)) {
+        nextState = "requested";
+        requestMessage = content.replace(SYSTEM_REQUEST_PREFIX, "").trim();
+        continue;
+      }
+      if (content.startsWith(SYSTEM_ACCEPT_PREFIX)) {
+        nextState = "accepted";
+        continue;
+      }
+      if (content.startsWith(SYSTEM_DECLINE_PREFIX)) {
+        nextState = "idle";
+        continue;
+      }
+      if (content.startsWith(SYSTEM_CANCEL_PREFIX)) {
+        nextState = "idle";
+        continue;
+      }
+    }
+
+    // Support legacy message types during transition
+    if (type === "SYSTEM_HIRE_REQUEST") {
       nextState = "requested";
-      requestMessage = stripSystemPrefix(message);
+      requestMessage = content;
       continue;
     }
-    if (message.startsWith(SYSTEM_ACCEPT_PREFIX)) {
+    if (type === "SYSTEM_HIRE_ACCEPTED") {
       nextState = "accepted";
       continue;
     }
-    if (message.startsWith(SYSTEM_DECLINE_PREFIX)) {
+    if (type === "SYSTEM_HIRE_DECLINED") {
       nextState = "idle";
     }
   }
@@ -268,8 +282,6 @@ function RouteComponent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [startingChat, setStartingChat] = useState(false);
-
   const [isHireRequested, setIsHireRequested] = useState(
     initialHireStatus.isHireRequested
   );
@@ -283,6 +295,7 @@ function RouteComponent() {
   const [hireRequestMessage, setHireRequestMessage] =
     useState(DEFAULT_HIRE_MESSAGE);
   const [sendingHireRequest, setSendingHireRequest] = useState(false);
+  const [cancelingHireRequest, setCancelingHireRequest] = useState(false);
   const [requestLoading, setRequestLoading] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [pendingHireRequests, setPendingHireRequests] = useState<
@@ -296,6 +309,7 @@ function RouteComponent() {
   >(null);
 
   const { profile, session } = useUserStore();
+  const { activeOrderId: globalActiveOrderId, activeOrderTracking } = useOrderStore();
 
   const currentUserId = profile?.id || session?.user?.id || null;
   const isServiceOwner = !!(
@@ -304,23 +318,21 @@ function RouteComponent() {
     String(currentUserId) === String(creatorId)
   );
 
-  const isDeliverySessionService =
-    service?.category === "DELIVERY" ||
-    (service?.name || "").toLowerCase().includes("order session");
-
-  const canTryHire = !!(
-    currentUserId &&
-    !isServiceOwner &&
-    !isDeliverySessionService
-  );
-
-  const canOpenDeliverySessionChat = !!(
-    currentUserId && isDeliverySessionService
-  );
+  const canTryHire = !!(currentUserId && !isServiceOwner);
 
   const canRequestHire = !!(canTryHire && !!creatorId);
-  const hasAcceptedHire = isHireAccepted;
-  const hasPendingHire = isHireRequested && !isHireAccepted;
+
+  // Check if global tracking belongs to THIS service
+  const isTrackingThisService = !!(
+    activeOrderTracking && 
+    String(activeOrderTracking.serviceId) === String(service_id)
+  );
+
+  const hasAcceptedHire = isHireAccepted || (isTrackingThisService && activeOrderTracking?.status !== "WAITING");
+  const hasPendingHire = (isHireRequested && !isHireAccepted) || (isTrackingThisService && activeOrderTracking?.status === "WAITING");
+
+  // Track order if globalActiveOrderId exists OR local activeOrderId exists
+  const hasActiveOrder = !!activeOrderId || isTrackingThisService;
 
   const loadService = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -333,7 +345,7 @@ function RouteComponent() {
         const { data: serviceData, error: serviceError } = await withTimeout(
           supabase
             .from("services")
-            .select("*, freelancer:profiles(*)")
+            .select("*, freelancer:profiles(*), pickup_address:addresses!pickup_address_id(*), dest_address:addresses!destination_address_id(*)")
             .eq("service_id", service_id)
             .maybeSingle()
         );
@@ -343,7 +355,7 @@ function RouteComponent() {
             await withTimeout(
               supabase
                 .from("services")
-                .select("*")
+                .select("*, pickup_address:addresses!pickup_address_id(*), dest_address:addresses!destination_address_id(*)")
                 .eq("service_id", service_id)
                 .maybeSingle()
             );
@@ -410,27 +422,24 @@ function RouteComponent() {
           setRequestLoading(true);
         }
 
-        // Also fetch the most recent active order status
-        const { data: orderRow } = await withTimeout(
-          supabase
-            .from("orders")
-            .select("order_id, status")
-            .eq("service_id", service_id)
-            .or(`customer_id.eq.${currentUserId},freelance_id.eq.${currentUserId}`)
-            .in("status", ["waiting", "on_my_way", "in_service", "complete"])
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle()
+        // Use global tracking from store instead of querying orders table
+        const { activeOrderTracking } = useOrderStore.getState();
+        const isTrackingThisService = !!(
+          activeOrderTracking && 
+          String(activeOrderTracking.serviceId) === String(service_id)
         );
 
-        if (orderRow) {
-          setActiveOrderId(orderRow.order_id);
+        if (isTrackingThisService && activeOrderTracking) {
+          setActiveOrderId(activeOrderTracking.orderId);
           setIsHireRequested(true);
-          setIsHireAccepted(orderRow.status !== "waiting");
-        } else {
-          setActiveOrderId(null);
-          setIsHireRequested(false);
-          setIsHireAccepted(false);
+          setIsHireAccepted(activeOrderTracking.status !== "WAITING");
+        } else if (!isServiceOwner) {
+          // If not tracking and not owner, we assume no active hire for this session
+          // (Unless we want to keep local activeOrderId if it was already set)
+          if (!activeOrderId) {
+            setIsHireRequested(false);
+            setIsHireAccepted(false);
+          }
         }
 
         if (isServiceOwner) {
@@ -466,7 +475,7 @@ function RouteComponent() {
                 ? withTimeout(
                     supabase
                       .from("chat_messages")
-                      .select("room_id, message, created_at")
+                      .select("room_id, content, created_at, message_type")
                       .in("room_id", roomIds)
                       .order("created_at", { ascending: true })
                   )
@@ -515,7 +524,7 @@ function RouteComponent() {
         }
       }
     },
-    [currentUserId, creatorId, service_id, isServiceOwner]
+    [currentUserId, creatorId, service_id, isServiceOwner, activeOrderId]
   );
 
   // Initial hire data handled by loader
@@ -610,6 +619,19 @@ function RouteComponent() {
     };
   }, [service_id, activeOrderId, loadHireRequestData, loadService]);
 
+  const goToOrderDetails = useCallback(async () => {
+    const targetOrderId = activeOrderId || globalActiveOrderId;
+    if (!currentUserId || !targetOrderId) {
+      if (!currentUserId) toast.error("Please login to see order details");
+      return;
+    }
+
+    router.navigate({
+      to: "/order/$order_id" as any,
+      params: { order_id: targetOrderId } as any
+    });
+  }, [currentUserId, activeOrderId, globalActiveOrderId, router]);
+
   const sendHireRequest = async () => {
     if (!currentUserId || !creatorId) return;
 
@@ -622,7 +644,7 @@ function RouteComponent() {
         .from("orders")
         .select("order_id")
         .eq("customer_id", currentUserId)
-        .eq("status", "complete")
+        .eq("status", "COMPLETE")
         .is("payment_id", null)
         .limit(1);
 
@@ -636,10 +658,9 @@ function RouteComponent() {
         .from("orders")
         .insert({
           customer_id: currentUserId,
-          freelance_id: creatorId,
           service_id: service_id,
           price: service.price || 0,
-          status: "waiting"
+          status: "WAITING"
         })
         .select("order_id")
         .single();
@@ -669,16 +690,61 @@ function RouteComponent() {
         room_id: newRoom.id,
         order_id: service_id,
         sender_id: currentUserId,
-        message: systemMsg
+        content: systemMsg,
+        message_type: "SYSTEM"
       });
 
       setIsHireRequested(true);
       setIsHireAccepted(false);
-      toast.success("Hire request sent!");
+      toast("Your request has been sent. Waiting for freelancer approval.", {
+        id: "hire-pending",
+        icon: "⏳"
+      });
     } catch (err: any) {
       setRequestError(err.message || "Failed to send hire request");
     } finally {
       setSendingHireRequest(false);
+    }
+  };
+
+  const cancelHireRequest = async () => {
+    if (!currentUserId || !activeOrderId) return;
+
+    try {
+      setCancelingHireRequest(true);
+      setRequestError(null);
+
+      const { data: room } = await supabase
+        .from("chat_rooms")
+        .select("id")
+        .eq("order_id", activeOrderId)
+        .maybeSingle();
+
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({ status: "CANCEL" }) // Using 'CANCEL' as cancellation status
+        .eq("order_id", activeOrderId)
+        .eq("customer_id", currentUserId)
+        .eq("status", "WAITING");
+
+      if (orderError) throw orderError;
+
+      if (room) {
+        await supabase.from("chat_messages").insert({
+          room_id: room.id,
+          order_id: service_id,
+          sender_id: currentUserId,
+          content: toSystemCancelMessage("Customer canceled this hire request."),
+          message_type: "SYSTEM"
+        });
+      }
+
+      toast.success("Hire request canceled.");
+      await loadHireRequestData({ silent: true });
+    } catch (err: any) {
+      setRequestError(err.message || "Failed to cancel hire request");
+    } finally {
+      setCancelingHireRequest(false);
     }
   };
 
@@ -692,13 +758,16 @@ function RouteComponent() {
         .select("order_id")
         .eq("service_id", service_id)
         .eq("customer_id", request.customer_id)
-        .eq("status", "waiting")
+        .eq("status", "WAITING")
         .maybeSingle();
 
       if (order) {
         await supabase
           .from("orders")
-          .update({ status: "on_my_way" })
+          .update({
+            status: "ON_MY_WAY",
+            freelance_id: currentUserId
+          })
           .eq("order_id", order.order_id);
       }
 
@@ -710,13 +779,16 @@ function RouteComponent() {
         room_id: request.room_id,
         order_id: service_id,
         sender_id: currentUserId,
-        message: systemMsg
+        content: systemMsg,
+        message_type: "SYSTEM"
       });
 
       setPendingHireRequests((prev) =>
         prev.filter((r) => r.room_id !== request.room_id)
       );
-      toast.success("Accepted hire request!");
+      toast.success("Request accepted! You can now open chat.", {
+        id: "hire-accepted"
+      });
       await loadHireRequestData({ silent: true });
     } catch (err: any) {
       toast.error(err.message || "Failed to accept");
@@ -735,13 +807,13 @@ function RouteComponent() {
         .select("order_id")
         .eq("service_id", service_id)
         .eq("customer_id", request.customer_id)
-        .eq("status", "waiting")
+        .eq("status", "WAITING")
         .maybeSingle();
 
       if (order) {
         await supabase
           .from("orders")
-          .update({ status: "reject" })
+          .update({ status: "REJECT" })
           .eq("order_id", order.order_id);
       }
 
@@ -753,7 +825,8 @@ function RouteComponent() {
         room_id: request.room_id,
         order_id: service_id,
         sender_id: currentUserId,
-        message: systemMsg
+        content: systemMsg,
+        message_type: "SYSTEM"
       });
 
       setPendingHireRequests((prev) =>
@@ -765,106 +838,6 @@ function RouteComponent() {
       toast.error(err.message || "Failed to decline");
     } finally {
       setDecliningRequestRoomId(null);
-    }
-  };
-
-  const openChat = async () => {
-    if (!currentUserId || !creatorId || !service) {
-      if (!currentUserId) toast.error("Please login to contact freelancer");
-      return;
-    }
-
-    try {
-      setStartingChat(true);
-
-      // 0. Check for any 'complete' orders that are not yet paid
-      const { data: unpaidOrders } = await supabase
-        .from("orders")
-        .select("order_id")
-        .eq("customer_id", currentUserId)
-        .eq("status", "complete")
-        .is("payment_id", null)
-        .limit(1);
-
-      if (unpaidOrders && unpaidOrders.length > 0) {
-        toast.error("Please pay for your completed orders before hiring again.");
-        setStartingChat(false);
-        return;
-      }
-
-      // 1. Check for existing active order for this service and customer
-      const { data: existingOrder } = await supabase
-        .from("orders")
-        .select("order_id, status")
-        .eq("customer_id", currentUserId)
-        .eq("service_id", service_id)
-        .in("status", ["waiting", "on_my_way", "in_service", "complete"])
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      let targetOrderId: string;
-
-      if (existingOrder) {
-        targetOrderId = existingOrder.order_id;
-      } else {
-        // 2. Create new order if none active
-        const { data: newOrder, error: orderError } = await supabase
-          .from("orders")
-          .insert({
-            customer_id: currentUserId,
-            freelance_id: creatorId,
-            service_id: service_id,
-            price: service.price || 0,
-            status: "waiting"
-          })
-          .select("order_id")
-          .single();
-
-        if (orderError) throw orderError;
-        targetOrderId = newOrder.order_id;
-        toast.success("Order request created!");
-      }
-
-      // 3. Resolve chat room for this order
-      const { data: existingRoom } = await supabase
-        .from("chat_rooms")
-        .select("id")
-        .eq("order_id", targetOrderId)
-        .eq("customer_id", currentUserId)
-        .eq("freelancer_id", creatorId)
-        .maybeSingle();
-
-      let rId: string;
-
-      if (existingRoom) {
-        rId = existingRoom.id;
-      } else {
-        // Create new chat room linked to the order
-        const { data: newRoom, error: roomError } = await supabase
-          .from("chat_rooms")
-          .insert({
-            order_id: targetOrderId,
-            customer_id: currentUserId,
-            freelancer_id: creatorId,
-            created_by: currentUserId
-          })
-          .select("id")
-          .single();
-
-        if (roomError) throw roomError;
-        rId = newRoom.id;
-      }
-
-      // 4. Navigate to the chat page
-      router.navigate({
-        to: "/chat/$id" as any,
-        params: { id: rId } as any
-      });
-    } catch (err: any) {
-      toast.error(err.message || "Failed to open chat");
-    } finally {
-      setStartingChat(false);
     }
   };
 
@@ -902,15 +875,16 @@ function RouteComponent() {
       defaultImage={DEFAULT_IMAGE}
       defaultDescription={DEFAULT_DESCRIPTION}
       defaultHireMessage={DEFAULT_HIRE_MESSAGE}
-      canOpenDeliverySessionChat={canOpenDeliverySessionChat}
-      openChat={openChat}
-      startingChat={startingChat}
+      openChat={goToOrderDetails}
+      startingChat={false}
       canTryHire={canTryHire}
       isHireRequested={isHireRequested}
       hireRequestMessage={hireRequestMessage}
       setHireRequestMessage={setHireRequestMessage}
       sendHireRequest={sendHireRequest}
       sendingHireRequest={sendingHireRequest}
+      cancelHireRequest={cancelHireRequest}
+      cancelingHireRequest={cancelingHireRequest}
       requestLoading={requestLoading}
       canRequestHire={canRequestHire}
       hasPendingHire={hasPendingHire}
@@ -924,7 +898,7 @@ function RouteComponent() {
       chatError={null}
       requestError={requestError}
       activeOrderId={activeOrderId}
-      hasActiveOrder={!!activeOrderId}
+      hasActiveOrder={hasActiveOrder}
     />
   );
 }

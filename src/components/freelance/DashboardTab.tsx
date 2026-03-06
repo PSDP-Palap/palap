@@ -32,7 +32,9 @@ const DashboardTab = ({
       <div className="bg-white rounded-xl border border-orange-100 p-4 shadow-sm min-w-0 overflow-hidden flex-1 flex flex-col">
         <h2 className="text-xl font-black text-[#4A2600] mb-3">Recent Jobs</h2>
 
-        <div className={`flex-1 min-h-0 flex flex-col ${loadingServices || upcomingJobs.length === 0 ? 'items-center justify-center' : ''}`}>
+        <div
+          className={`flex-1 min-h-0 flex flex-col ${loadingServices || upcomingJobs.length === 0 ? "items-center justify-center" : ""}`}
+        >
           {loadingServices ? (
             <Loading fullScreen={false} size={60} />
           ) : upcomingJobs.length === 0 ? (
@@ -55,14 +57,16 @@ const DashboardTab = ({
                         {item?.name || "Service"}
                       </h4>
                       <p className="text-xs text-gray-400 truncate">
-                        {item?.pickup_address || "No pickup"} →{" "}
-                        {item?.dest_address || "No destination"}
+                        {item?.pickup_address_id || "No pickup"} →{" "}
+                        {item?.destination_address_id || "No destination"}
                       </p>
                     </div>
                   </div>
                   <div className="text-right shrink-0 ml-3">
                     <div className="flex items-center justify-end gap-2 mb-1">
-                      <span className="text-[10px] text-gray-500">Category:</span>
+                      <span className="text-[10px] text-gray-500">
+                        Category:
+                      </span>
                       <span className="bg-[#FFD700] text-[10px] px-2 py-0.5 rounded-full font-bold">
                         {item?.category || "GENERAL"}
                       </span>

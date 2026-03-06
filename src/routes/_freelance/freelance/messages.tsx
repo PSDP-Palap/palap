@@ -48,7 +48,7 @@ function MessagesRoute() {
         roomIds.length
           ? supabase
               .from("chat_messages")
-              .select("room_id, message, created_at, sender_id")
+              .select("room_id, content, created_at, sender_id")
               .in("room_id", roomIds)
               .order("created_at", { ascending: false })
           : { data: [] }
@@ -59,7 +59,7 @@ function MessagesRoute() {
       );
       const latestMsgMap = new Map();
       (messageRows || []).forEach((m) => {
-        if (!latestMsgMap.has(m.room_id) && !isSystemMessage(m.message)) {
+        if (!latestMsgMap.has(m.room_id) && !isSystemMessage(m.content)) {
           latestMsgMap.set(m.room_id, m);
         }
       });
@@ -97,7 +97,7 @@ function MessagesRoute() {
           freelancerName: profile?.full_name || "Me",
           freelancerAvatarUrl: profile?.avatar_url || null,
           lastMessage: lastMsg
-            ? cleanPreviewMessage(lastMsg.message)
+            ? cleanPreviewMessage(lastMsg.content)
             : "No messages yet",
           lastAt: lastMsg?.created_at || r.last_message_at || r.created_at,
           serviceName: svcName

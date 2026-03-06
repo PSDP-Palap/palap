@@ -17,14 +17,13 @@ export const Route = createFileRoute("/_authenticated/order/$order_id")({
 const DEFAULT_MAP_CENTER = { lat: 13.7563, lng: 100.5018 };
 const WAITING_STATUS_SET = new Set([
   "",
-  "waiting",
-  "pending",
-  "new",
-  "open",
-  "requested",
-  "looking_freelancer"
+  "WAITING",
+  "PENDING",
+  "NEW",
+  "OPEN",
+  "REQUESTED",
+  "LOOKING_FREELANCER"
 ]);
-const DELIVERY_DONE_PREFIX = "[SYSTEM_DELIVERY_DONE]";
 
 function OrderTrackingPage() {
   const { order_id } = Route.useParams();
@@ -119,24 +118,24 @@ function OrderTrackingPage() {
           .from("chat_messages")
           .select("id")
           .eq("order_id", orderId)
-          .like("message", `${DELIVERY_DONE_PREFIX} ORDER:%`)
+          .or(
+            "message_type.eq.SYSTEM_DELIVERY_DONE,content.like.[SYSTEM_DELIVERY_DONE] ORDER:%"
+          )
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        const rawStatus = String(orderRow.status || "").toLowerCase();
-        const hasAssignedFreelancer = !!freelanceId;
+        const rawStatus = String(orderRow.status || "").toUpperCase();
         const normalizedStatus =
           isCompletedOrderStatus(rawStatus, orderRow.payment_id) ||
           !!doneMarkerRow
-            ? "delivered"
-            : hasAssignedFreelancer && WAITING_STATUS_SET.has(rawStatus)
-              ? "serving"
-              : rawStatus || (hasAssignedFreelancer ? "serving" : "waiting");
+            ? "COMPLETE"
+            : rawStatus || "WAITING";
 
         const tracking: DeliveryTracking = {
           orderId: String(orderRow.order_id),
           serviceId: orderRow.service_id,
+          customerId: orderRow.customer_id ? String(orderRow.customer_id) : null,
           roomId: chatRoomRow?.id ? String(chatRoomRow.id) : null,
           status: normalizedStatus,
           createdAt: orderRow.created_at,
@@ -220,7 +219,7 @@ function OrderTrackingPage() {
   useEffect(() => {
     if (!trackingData || !order_id || !currentUserId) return;
 
-    const status = String(trackingData.status || "").toLowerCase();
+    const status = String(trackingData.status || "").toUpperCase();
     const previousStatus = previousTrackingStatusRef.current;
     previousTrackingStatusRef.current = status;
 
@@ -230,8 +229,8 @@ function OrderTrackingPage() {
     const deliveredNoticeKey = `delivery_notice_delivered:${currentUserId}:${order_id}`;
 
     if (
-      status === "serving" &&
-      previousStatus !== "serving" &&
+      status === "ON_MY_WAY" &&
+      previousStatus !== "ON_MY_WAY" &&
       !window.sessionStorage.getItem(servingNoticeKey)
     ) {
       toast.success("Your order is now being delivered.");
@@ -267,8 +266,10 @@ function OrderTrackingPage() {
     );
   }
 
-  const status = trackingData.status.toLowerCase();
+  const status = trackingData.status.toUpperCase();
   const isDelivered = isCompletedOrderStatus(status);
+  const isAccepted = !!trackingData.freelanceId && !WAITING_STATUS_SET.has(status);
+
   const pickupLat = toNumber(trackingData.pickupAddress?.lat || "");
   const pickupLng = toNumber(trackingData.pickupAddress?.lng || "");
   const destinationLat = toNumber(trackingData.destinationAddress?.lat || "");
@@ -291,7 +292,7 @@ function OrderTrackingPage() {
     <DeliveryTrackingView
       activeOrderId={order_id}
       status={status}
-      accepted={!!trackingData.freelanceId}
+      accepted={isAccepted}
       isDelivered={isDelivered}
       trackingData={trackingData}
       trackingLoading={trackingLoading}

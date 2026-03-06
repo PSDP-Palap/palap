@@ -11,6 +11,7 @@ export interface Address {
 export interface DeliveryTracking {
   orderId: string;
   serviceId: string | null;
+  customerId: string | null;
   roomId: string | null;
   status: string;
   createdAt: string;

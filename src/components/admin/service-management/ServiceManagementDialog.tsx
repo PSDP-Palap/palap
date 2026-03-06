@@ -44,8 +44,8 @@ export const ServiceManagementDialog = ({
     name: service?.name || "",
     price: service?.price || 0,
     category: service?.category || "SHOPPING",
-    pickup_address: service?.pickup_address || "",
-    dest_address: service?.dest_address || "",
+    pickup_address_id: service?.pickup_address_id || "",
+    destination_address_id: service?.destination_address_id || "",
     image_url: service?.image_url || "",
     detail_1: service?.detail_1 || "",
     detail_2: service?.detail_2 || ""
