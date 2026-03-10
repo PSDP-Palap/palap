@@ -1,3 +1,5 @@
+import { Package } from "lucide-react";
+
 interface OrderItem {
   id: string;
   name: string;
@@ -9,76 +11,58 @@ interface OrderItem {
 
 interface OrderItemsListProps {
   orderRows: OrderItem[];
-  setCartQuantity: (id: string, qty: number) => void;
-  removeCartItem: (id: string) => void;
 }
 
-export function OrderItemsList({
-  orderRows,
-  setCartQuantity,
-  removeCartItem,
-}: OrderItemsListProps) {
+export function OrderItemsList({ orderRows }: OrderItemsListProps) {
   return (
-    <section className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-      <h2 className="text-lg font-black text-[#4A2600] mb-3">Service Details</h2>
-
+    <section className="space-y-4">
       {orderRows.length === 0 ? (
-        <p className="text-sm text-gray-500">
-          No selected product. Please select an item first.
-        </p>
+        <div className="py-12 flex flex-col items-center justify-center border-2 border-dashed border-gray-100 rounded-3xl">
+          <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+            <Package className="w-8 h-8 text-gray-300" />
+          </div>
+          <p className="text-sm font-bold text-gray-400">Your cart is currently empty</p>
+        </div>
       ) : (
-        <div className="space-y-2 max-h-[255px] overflow-y-auto pr-1">
+        <div className="divide-y divide-gray-50">
           {orderRows.map((row) => (
             <div
               key={row.id}
-              className="flex items-center justify-between text-sm border-b border-gray-100 pb-2 gap-3"
+              className="py-6 first:pt-0 last:pb-0 flex items-center gap-6 group"
             >
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="w-24 h-24 rounded-2xl bg-orange-50/50 border border-orange-100 overflow-hidden flex-shrink-0 transition-transform duration-500 group-hover:scale-105 shadow-sm">
                 <img
-                  src={row.imageUrl || "https://via.placeholder.com/48"}
+                  src={row.imageUrl || "https://via.placeholder.com/100"}
                   alt={row.name}
-                  className="w-10 h-10 rounded-md object-cover border border-gray-100 bg-white"
+                  className="w-full h-full object-cover"
                 />
-                <div className="min-w-0">
-                  <p className="font-bold text-[#4A2600] truncate">{row.name}</p>
-                  <p className="text-gray-500">
-                    {row.quantity} x ฿{row.unitPrice.toFixed(2)}
+              </div>
+              
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-black text-[#4A2600] text-lg leading-tight group-hover:text-orange-600 transition-colors truncate">
+                      {row.name}
+                    </h3>
+                    <p className="text-xs font-black text-orange-600/60 uppercase tracking-widest mt-1">
+                      Premium Supplies
+                    </p>
+                  </div>
+                  <p className="font-black text-[#4A2600] text-xl">
+                    ฿{row.subtotal.toLocaleString()}
                   </p>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setCartQuantity(row.id, row.quantity - 1)}
-                    className="w-7 h-7 rounded-md bg-gray-100 text-[#4A2600] font-black hover:bg-gray-200"
-                  >
-                    -
-                  </button>
-                  <span className="min-w-6 text-center font-bold text-[#4A2600]">
-                    {row.quantity}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setCartQuantity(row.id, row.quantity + 1)}
-                    className="w-7 h-7 rounded-md bg-gray-100 text-[#4A2600] font-black hover:bg-gray-200"
-                  >
-                    +
-                  </button>
+                
+                <div className="flex items-center gap-4 mt-4">
+                  <div className="px-3 py-1 bg-gray-50 rounded-lg border border-gray-100 flex items-center gap-2">
+                    <span className="text-[10px] font-black text-gray-400 uppercase">Qty</span>
+                    <span className="text-sm font-black text-[#4A2600]">{row.quantity}</span>
+                  </div>
+                  <div className="h-4 w-px bg-gray-100" />
+                  <p className="text-xs font-bold text-gray-400">
+                    ฿{row.unitPrice.toLocaleString()} per item
+                  </p>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => removeCartItem(row.id)}
-                  className="px-2 py-1 rounded-md bg-red-50 text-red-600 font-black text-[10px] uppercase hover:bg-red-100"
-                >
-                  Remove
-                </button>
-
-                <p className="font-black text-[#4A2600] min-w-[78px] text-right">
-                  ฿{row.subtotal.toFixed(2)}
-                </p>
               </div>
             </div>
           ))}
