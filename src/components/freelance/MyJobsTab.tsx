@@ -37,6 +37,7 @@ interface MyJobsTabProps {
     data: Partial<Service> & {
       pickupAddress?: string;
       destinationAddress?: string;
+      imageFile?: File | null;
       mapLat?: number;
       mapLng?: number;
     }
