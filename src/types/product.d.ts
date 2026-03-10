@@ -8,6 +8,7 @@ export interface Product {
   price: number;
   qty: number;
   image_url: string | null;
+  category?: string | null;
   created_at: string;
   pickup_address_id: string | null;
   pickup_address?: Address | null;

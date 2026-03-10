@@ -70,10 +70,6 @@ export function ProductCard({
             )}
           </div>
 
-          <button className="absolute top-3 right-3 p-2 rounded-full bg-white/80 backdrop-blur-sm shadow-sm hover:bg-white transition-all text-gray-400 hover:text-red-500">
-            <Heart className="w-4 h-4" />
-          </button>
-
           {/* Quick Action Overlay */}
           <div className={`absolute inset-0 bg-black/5 flex items-center justify-center gap-3 transition-opacity duration-300 ${isHovered ? "opacity-100" : "opacity-0"}`}>
             <button 
@@ -90,13 +86,6 @@ export function ProductCard({
 
         {/* Content Section */}
         <div className="p-5 flex flex-col flex-1">
-          <div className="flex items-center gap-1 mb-2">
-            <div className="flex text-yellow-400">
-              <Star className="w-3 h-3 fill-current" />
-            </div>
-            <span className="text-[10px] font-black text-gray-400">4.8 (24)</span>
-          </div>
-
           <h3 className="font-black text-[#4A2600] leading-tight mb-2 group-hover:text-orange-600 transition-colors line-clamp-1">
             {product.name}
           </h3>

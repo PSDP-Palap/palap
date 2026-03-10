@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { 
+  RefreshCcw,
+  DollarSign,
+  AlertCircle, 
+  Search,
+  Package,
+  CheckCircle2,
+  Clock,
+  ArrowRight
+} from "lucide-react";
 
 import Loading from "@/components/shared/Loading";
 import {
@@ -15,127 +25,96 @@ interface EarningDetail {
   order_id: string;
   freelance_id: string;
   amount: number;
-  status: "pending" | "paid" | string;
+  status: string;
   paid_at: string | null;
   created_at: string;
-  freelance_name: string;
-  freelance_email: string;
 }
 
 const PaymentTab = () => {
+  const [activeView, setActiveTab] = useState<'earnings' | 'transactions'>('earnings');
   const [earnings, setEarnings] = useState<EarningDetail[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
 
-  const fetchEarnings = async () => {
+  const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Query freelance_earnings joined with freelances -> profiles
-      const { data, error } = await supabase
-        .from("freelance_earnings")
-        .select(`
-          id,
-          order_id,
-          freelance_id,
-          amount,
-          status,
-          paid_at,
-          created_at,
-          freelances (
-            id,
-            profiles (
-              full_name,
-              email
-            )
-          )
-        `)
-        .order("created_at", { ascending: false });
+      if (activeView === 'earnings') {
+        const { data, error } = await supabase
+          .from("freelance_earnings")
+          .select("*")
+          .order("created_at", { ascending: false });
 
-      if (error) throw error;
+        if (error) throw error;
+        console.log("Fetched earnings:", data); // Debugging
+        setEarnings(data || []);
+      } else {
+        const { data, error } = await supabase
+          .from("transactions")
+          .select("*")
+          .order("created_at", { ascending: false });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const transformed = (data || []).map((item: any) => {
-        const freelance = Array.isArray(item.freelances)
-          ? item.freelances[0]
-          : item.freelances;
-        const profile = freelance?.profiles;
-
-        return {
-          id: item.id,
-          order_id: item.order_id,
-          freelance_id: item.freelance_id,
-          amount: Number(item.amount) || 0,
-          status: item.status,
-          paid_at: item.paid_at,
-          created_at: item.created_at,
-          freelance_name: profile?.full_name || "Unknown",
-          freelance_email: profile?.email || "Unknown"
-        };
-      });
-
-      setEarnings(transformed);
+        if (error) throw error;
+        setTransactions(data || []);
+      }
     } catch (error) {
-      console.error("Error fetching earnings:", error);
-      toast.error("Failed to load payment data");
+      console.error("Error fetching data:", error);
+      toast.error("Failed to load data");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAcceptPayment = async (earningId: string) => {
-    if (!window.confirm("ยืนยันการจ่ายเงินให้กับ Freelance ใช่หรือไม่?")) return;
-
-    setIsUpdating(earningId);
-    const loadingToast = toast.loading("กำลังดำเนินการ...");
+  const handleApprovePayout = async (earning: EarningDetail) => {
+    if (!window.confirm("Confirm payment transfer to Freelancer?")) return;
+    
+    setIsUpdating(earning.id);
+    const loadingToast = toast.loading("Finalizing payout...");
     try {
-      const { error } = await supabase
+      // 1. Update the earning status to 'paid'
+      const { error: earningError } = await supabase
         .from("freelance_earnings")
-        .update({
-          status: "paid",
-          paid_at: new Date().toISOString()
+        .update({ 
+          status: "paid", 
+          paid_at: new Date().toISOString() 
         })
-        .eq("id", earningId);
+        .eq("id", earning.id);
+      
+      if (earningError) throw earningError;
 
-      if (error) throw error;
-
-      toast.success("จ่ายเงินเรียบร้อยแล้ว", { id: loadingToast });
-      fetchEarnings(); // Refresh data
+      // 2. Automatically close the order session by setting status to COMPLETE
+      if (earning.order_id) {
+        await supabase
+          .from("orders")
+          .update({ status: "COMPLETE" })
+          .eq("order_id", earning.order_id);
+      }
+      
+      toast.success("Payout successful and order closed!", { id: loadingToast });
+      fetchData(); // Refresh list
     } catch (error) {
-      console.error("Error updating payment status:", error);
-      toast.error("ไม่สามารถดำเนินการได้ โปรดตรวจสอบการตั้งค่า Database", {
-        id: loadingToast
-      });
+      console.error(error);
+      toast.error("Failed to update payout", { id: loadingToast });
     } finally {
       setIsUpdating(null);
     }
   };
 
   useEffect(() => {
-    fetchEarnings();
-  }, []);
-
-  const filteredEarnings = earnings.filter(
-    (e) =>
-      e.freelance_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      e.freelance_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      e.order_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      e.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    fetchData();
+  }, [activeView]);
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "paid":
-        return "bg-green-100 text-green-700 border-green-200";
-      case "pending":
-      default:
-        return "bg-amber-100 text-amber-700 border-amber-200";
-    }
+    const s = String(status || "").toLowerCase();
+    if (s === 'paid' || s === 'completed' || s === 'success') return "bg-green-100 text-green-700 border-green-200";
+    if (s === 'pending' || s === 'waiting') return "bg-orange-100 text-orange-700 border-orange-200";
+    return "bg-gray-100 text-gray-600 border-gray-200";
   };
 
-  if (isLoading) {
+  if (isLoading && earnings.length === 0 && transactions.length === 0) {
     return (
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex items-center justify-center h-full min-h-100">
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex items-center justify-center h-full min-h-[400px]">
         <Loading fullScreen={false} size={150} />
       </div>
     );
@@ -143,153 +122,160 @@ const PaymentTab = () => {
 
   return (
     <TooltipProvider>
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden relative flex flex-col h-full">
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-4">
-            <h2 className="text-xl font-bold text-gray-800">Payments</h2>
-            <button
-              onClick={() => fetchEarnings()}
-              disabled={isLoading}
-              className="p-2 text-gray-500 hover:text-[#A6411C] hover:bg-orange-50 rounded-xl transition-all disabled:opacity-50"
-              title="รีเฟรชข้อมูล"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+      <div className="bg-white rounded-[2.5rem] shadow-xl border border-orange-50 overflow-hidden flex flex-col h-full animate-in fade-in duration-500">
+        {/* Header */}
+        <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row justify-between items-center gap-6 bg-linear-to-b from-orange-50/30 to-transparent">
+          <div className="flex items-center gap-6">
+            <div>
+              <h2 className="text-2xl font-black text-[#4A2600] tracking-tight">
+                {activeView === 'earnings' ? "Freelance Payouts" : "Payment History"}
+              </h2>
+              <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">
+                {activeView === 'earnings' ? "Finalize earnings for completed jobs" : "Logs of all customer transactions"}
+              </p>
+            </div>
+            
+            <div className="flex p-1 bg-gray-100 rounded-2xl border border-gray-200 shadow-inner">
+              <button 
+                onClick={() => setActiveTab('earnings')}
+                className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeView === 'earnings' ? "bg-white text-[#A03F00] shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
+                Approve Payouts
+              </button>
+              <button 
+                onClick={() => setActiveTab('transactions')}
+                className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeView === 'transactions' ? "bg-white text-[#A03F00] shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+              >
+                History
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => fetchData()}
+              className="p-3 bg-white border border-gray-100 rounded-2xl text-gray-400 hover:text-orange-600 hover:bg-orange-50 transition-all shadow-sm active:scale-95"
+            >
+              <RefreshCcw className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`} />
             </button>
           </div>
-          <div className="relative w-64">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </div>
-            <input
-              type="text"
-              placeholder="ค้นหาชื่อ, Order ID..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#A6411C] focus:bg-white transition-all"
-            />
-          </div>
         </div>
+
+        {/* List Section */}
         <div className="flex-1 overflow-y-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-gray-50 text-gray-600 text-sm">
-                <th className="px-6 py-4 font-semibold">Order ID</th>
-                <th className="px-6 py-4 font-semibold">Freelancer</th>
-                <th className="px-6 py-4 font-semibold">Amount</th>
-                <th className="px-6 py-4 font-semibold">Date</th>
-                <th className="px-6 py-4 font-semibold">Status</th>
-                <th className="px-6 py-4 font-semibold text-center">
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredEarnings.length > 0 ? (
-                filteredEarnings.map((earning) => (
-                  <tr
-                    key={earning.id}
-                    className="hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-6 py-4 text-sm font-mono text-gray-500">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span
-                            className="cursor-pointer hover:text-[#A6411C] transition-colors"
-                            onClick={() => {
-                              navigator.clipboard.writeText(earning.order_id);
-                              toast.success("คัดลอก Order ID เรียบร้อยแล้ว");
-                            }}
-                          >
-                            {earning.order_id.split("-")[0]}...
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{earning.order_id}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-gray-800">
-                          {earning.freelance_name}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {earning.freelance_email}
-                        </span>
+          {activeView === 'earnings' ? (
+            <table className="w-full text-left">
+              <thead className="sticky top-0 bg-gray-50/80 backdrop-blur-md z-10">
+                <tr className="text-gray-400 text-[10px] font-black uppercase tracking-[0.2em]">
+                  <th className="px-8 py-5">Payout Detail</th>
+                  <th className="px-8 py-5 text-center">Amount</th>
+                  <th className="px-8 py-5 text-center">Current Status</th>
+                  <th className="px-8 py-5 text-center">Management Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {earnings.map((e) => (
+                  <tr key={e.id} className="hover:bg-orange-50/30 transition-colors group">
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                          <DollarSign className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-[#4A2600] truncate">#{e.order_id?.split("-")[0] || "No ID"}</p>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5 font-mono">{e.freelance_id || "No Freelancer"}</p>
+                        </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm font-bold text-[#A6411C]">
-                      ฿{earning.amount.toLocaleString()}
+                    <td className="px-8 py-6 text-center">
+                       <span className="font-black text-green-600 text-lg">฿{e.amount?.toLocaleString()}</span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {new Date(earning.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusBadge(
-                          earning.status
-                        )}`}
-                      >
-                        {earning.status.toUpperCase()}
+                    <td className="px-8 py-6 text-center">
+                      <span className={`px-4 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${getStatusBadge(e.status)}`}>
+                        {e.status || "WAITING"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      {earning.status === "pending" ? (
+                    <td className="px-8 py-6 text-center">
+                      {String(e.status).toLowerCase() !== "paid" ? (
                         <button
-                          onClick={() => handleAcceptPayment(earning.id)}
-                          disabled={isUpdating === earning.id}
-                          className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                          onClick={() => handleApprovePayout(e)}
+                          disabled={isUpdating === e.id}
+                          className="group/btn relative inline-flex items-center justify-center gap-2 px-8 py-3 bg-[#4A2600] text-white hover:bg-black rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-black/10 active:scale-95 disabled:opacity-50 overflow-hidden"
                         >
-                          {isUpdating === earning.id ? "Processing..." : "Accept"}
+                          <div className="absolute inset-0 bg-linear-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover/btn:animate-[shimmer_1.5s_infinite]" />
+                          {isUpdating === e.id ? "Syncing..." : "Release Payment"}
+                          <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-1 transition-transform" />
                         </button>
                       ) : (
-                        <span className="text-xs text-gray-400 italic">
-                          Paid on {new Date(earning.paid_at!).toLocaleDateString()}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center gap-1.5 text-green-600">
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Payout Cleared</span>
+                          </div>
+                          <p className="text-[8px] text-gray-400 font-bold uppercase">{new Date(e.paid_at!).toLocaleDateString()}</p>
+                        </div>
                       )}
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-6 py-10 text-center text-gray-500"
-                  >
-                    {searchTerm
-                      ? "ไม่พบข้อมูลที่ตรงกับการค้นหา"
-                      : "ไม่พบข้อมูลรายการจ่ายเงิน"}
-                  </td>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="w-full text-left">
+              <thead className="sticky top-0 bg-gray-50/80 backdrop-blur-md z-10">
+                <tr className="text-gray-400 text-[10px] font-black uppercase tracking-[0.2em]">
+                  <th className="px-8 py-5">Order Detail</th>
+                  <th className="px-8 py-5">Amount</th>
+                  <th className="px-8 py-5">Method</th>
+                  <th className="px-8 py-5">Status</th>
+                  <th className="px-8 py-5 text-right">Date</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {transactions.map((t) => (
+                  <tr key={t.id} className="hover:bg-orange-50/30 transition-colors group">
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+                          <Package className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-[#4A2600] truncate">#{t.order_id?.split("-")[0] || "No ID"}</p>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Order ID</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6 font-black text-[#A03F00] text-sm">฿{t.amount?.toLocaleString()}</td>
+                    <td className="px-8 py-6">
+                      <span className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-[9px] font-black uppercase tracking-wider">
+                        {t.payment_method}
+                      </span>
+                    </td>
+                    <td className="px-8 py-6">
+                      <span className={`px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-wider ${getStatusBadge(t.status || "paid")}`}>
+                        {t.status || "paid"}
+                      </span>
+                    </td>
+                    <td className="px-8 py-6 text-right text-[10px] font-bold text-gray-400">
+                      {new Date(t.created_at).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {((activeView === 'earnings' ? earnings : transactions).length === 0) && (
+            <div className="py-20 text-center">
+              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="w-10 h-10 text-gray-200" />
+              </div>
+              <h3 className="text-xl font-black text-[#4A2600]">No database records found</h3>
+              <p className="text-gray-400 font-bold mt-1 uppercase text-[10px] tracking-widest text-center">
+                The {activeView} table in Supabase appears to be empty.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </TooltipProvider>

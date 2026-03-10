@@ -15,6 +15,7 @@ interface RawProductRow {
   price: number;
   qty: number;
   image_url: string | null;
+  category: string | null;
   created_at: string;
   pickup_address_id: string | null;
 }
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/product/")({
   loader: async () => {
     const { data, error } = await supabase
       .from("products")
-      .select("product_id, name, price, qty, image_url, created_at, pickup_address_id")
+      .select("product_id, name, price, qty, image_url, category, created_at, pickup_address_id")
       .order("name", { ascending: true })
       .limit(100);
 
@@ -39,6 +40,7 @@ export const Route = createFileRoute("/product/")({
       price: Number(item.price || 0),
       qty: Number(item.qty || 0),
       image_url: item.image_url || null,
+      category: item.category || null,
       created_at: String(item.created_at),
       pickup_address_id: item.pickup_address_id || null
     }));
@@ -87,12 +89,20 @@ function RouteComponent() {
     })
     .filter((row): row is any => !!row);
 
-  const filteredProducts = products.filter((item) => {
-    const query = searchQuery.trim().toLowerCase();
-    const matchesSearch = !query || item.name.toLowerCase().includes(query);
-    const matchesCategory = selectedCategory === "All" || true; // Category filtering logic mock
-    return matchesSearch && matchesCategory;
-  });
+  const filteredProducts = products
+    .filter((item) => {
+      const query = searchQuery.trim().toLowerCase();
+      const matchesSearch = !query || item.name.toLowerCase().includes(query);
+      const matchesCategory = selectedCategory === "All" || 
+        (item.category?.toLowerCase() === selectedCategory.toLowerCase());
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      if (sortBy === "price-low") return a.price - b.price;
+      if (sortBy === "price-high") return b.price - a.price;
+      if (sortBy === "newest") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return 0;
+    });
 
   return (
     <div className="min-h-screen bg-[#FDFCFB] font-sans pb-32">
@@ -170,10 +180,6 @@ function RouteComponent() {
                     <option value="price-high">Price: High to Low</option>
                   </select>
                   <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                </div>
-                <div className="hidden sm:flex gap-1 p-1 bg-gray-50 rounded-xl">
-                  <button className="p-2 rounded-lg bg-white shadow-sm text-orange-600"><Grid className="w-4 h-4" /></button>
-                  <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600"><List className="w-4 h-4" /></button>
                 </div>
               </div>
             </div>

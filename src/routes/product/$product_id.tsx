@@ -88,10 +88,20 @@ export const Route = createFileRoute("/product/$product_id")({
       }
     }
 
+    const { data: relatedProducts } = await withTimeout(
+      supabase
+        .from("products")
+        .select("product_id, name, price, qty, image_url, category")
+        .eq("category", product.category)
+        .neq("product_id", product_id)
+        .limit(4)
+    );
+
     return {
       product,
       pickupAddress,
-      pickupLookupHint
+      pickupLookupHint,
+      relatedProducts: (relatedProducts as any[]) || []
     };
   },
   component: RouteComponent,
@@ -116,7 +126,7 @@ export const Route = createFileRoute("/product/$product_id")({
 });
 
 function RouteComponent() {
-  const { product, pickupAddress, pickupLookupHint } = Route.useLoaderData();
+  const { product, pickupAddress, pickupLookupHint, relatedProducts } = Route.useLoaderData();
   const { product_id } = Route.useParams();
   const router = useRouter();
 
@@ -152,6 +162,7 @@ function RouteComponent() {
       setQty={setQty}
       isOutOfStock={isOutOfStock}
       existingQty={existingQty}
+      relatedProducts={relatedProducts}
       onAddToCart={() => {
         if (isOutOfStock) return;
         setQuantity(product_id, Math.min(qty, maxQty));

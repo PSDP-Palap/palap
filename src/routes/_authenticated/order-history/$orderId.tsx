@@ -352,7 +352,7 @@ function RouteComponent() {
                     <span className="text-sm font-black italic text-green-600">฿{((detail.price / 1.0815) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm font-bold text-gray-500">Tax (3%)</span>
+                    <span className="text-sm font-bold text-gray-500">Web Service Fee (3%)</span>
                     <span className="text-sm font-black italic text-[#4A2600]">฿{((detail.price / 1.0815) * 1.05 * 0.03).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="h-px bg-orange-50" />
@@ -381,12 +381,6 @@ function RouteComponent() {
                     >
                       <Navigation className="w-4 h-4" />
                       Live Tracking
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      className="w-full py-5 rounded-2xl bg-red-50 text-red-600 font-black text-xs uppercase tracking-[0.2em] hover:bg-red-100 transition-all"
-                    >
-                      Cancel Order
                     </button>
                   </>
                 )}

@@ -227,7 +227,8 @@ function RouteComponent() {
 
   const subtotal = orderRows.reduce((sum, row) => sum + row.subtotal, 0);
   const totalItems = orderRows.reduce((sum, row) => sum + row.quantity, 0);
-  const deliveryFee = Math.round(subtotal * 0.05 * 100) / 100;
+  // Increased to 20% so 50 Baht order = 10 Baht earning
+  const deliveryFee = Math.round(subtotal * 0.20 * 100) / 100;
   const tax = Math.round((subtotal + deliveryFee) * 0.03 * 100) / 100;
   const total = subtotal + deliveryFee + tax;
 

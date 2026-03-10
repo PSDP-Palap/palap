@@ -182,8 +182,7 @@ function OrderHistoryPage() {
         <div className="flex p-1.5 bg-orange-50/50 rounded-[2rem] border border-orange-100 mb-8">
           {[
             { id: 'active', label: 'Active', icon: Clock },
-            { id: 'completed', label: 'Past Orders', icon: CheckCircle2 },
-            { id: 'cancelled', label: 'Cancelled', icon: XCircle }
+            { id: 'completed', label: 'Past Orders', icon: CheckCircle2 }
           ].map((tab) => (
             <button
               key={tab.id}

@@ -365,7 +365,15 @@ function JobsRoute() {
     if (!currentUserId) return;
     try {
       setAcceptingHireRoomId(request.orderId);
-      // Update order status to 'ON_MY_WAY' and assign freelance_id
+
+      // 1. Get order price for earning
+      const { data: orderData } = await supabase
+        .from("orders")
+        .select("price")
+        .eq("order_id", request.orderId)
+        .single();
+
+      // 2. Update order status to 'ON_MY_WAY' and assign freelance_id
       const { error: orderError } = await supabase
         .from("orders")
         .update({ 
@@ -375,6 +383,19 @@ function JobsRoute() {
         .eq("order_id", request.orderId);
 
       if (orderError) throw orderError;
+
+      // 3. Create Freelance Earning (20% logic)
+      if (orderData) {
+        const subtotal = orderData.price / 1.0815;
+        const earningAmount = subtotal * 0.20;
+        
+        await supabase.from("freelance_earnings").insert({
+          order_id: request.orderId,
+          freelance_id: currentUserId,
+          amount: earningAmount,
+          status: "pending"
+        });
+      }
 
       const systemMessage = "Freelancer accepted your request and is on the way!";
       await supabase.from("chat_messages").insert([
@@ -484,8 +505,13 @@ const acceptDeliveryOrder = async (order: DeliveryOrderItem) => {
   try {
     setAcceptingOrderId(order.orderId);
     
-    // ตรวจสอบชื่อคอลัมน์ให้ตรงกับ Database ของคุณ!
-    // ส่วนใหญ่มักจะเป็น 'freelance_id' หรือ 'freelancer_id' (เลือกตัวใดตัวหนึ่ง)
+    // 1. Get order price for earning
+    const { data: orderData } = await supabase
+      .from("orders")
+      .select("price")
+      .eq("order_id", order.orderId)
+      .single();
+
     const payload = {
       freelance_id: currentUserId, 
       status: "ON_MY_WAY"
@@ -496,9 +522,19 @@ const acceptDeliveryOrder = async (order: DeliveryOrderItem) => {
       .update(payload)
       .eq("order_id", order.orderId);
 
-    if (error) {
-      console.error("Supabase Update Error:", error); // ดูรายละเอียดใน Console
-      throw error;
+    if (error) throw error;
+
+    // 2. Create Freelance Earning (20% logic)
+    if (orderData) {
+      const subtotal = orderData.price / 1.0815;
+      const earningAmount = subtotal * 0.20;
+      
+      await supabase.from("freelance_earnings").insert({
+        order_id: order.orderId,
+        freelance_id: currentUserId,
+        amount: earningAmount,
+        status: "pending"
+      });
     }
     
     toast.success("Order accepted!");

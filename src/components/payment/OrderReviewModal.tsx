@@ -132,10 +132,9 @@ export function OrderReviewModal({
               <span className="font-bold text-[#4A2600]">฿{deliveryFee.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Tax (3%)</span>
+              <span className="text-gray-600">Web Service Fee (3%)</span>
               <span className="font-bold text-[#4A2600]">฿{tax.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between items-center pt-2">
+            </div>            <div className="flex justify-between items-center pt-2">
               <span className="font-black text-[#4A2600] text-lg">Total Amount</span>
               <span className="font-black text-2xl text-[#A03F00]">฿{total.toFixed(2)}</span>
             </div>

@@ -219,109 +219,88 @@ function RouteComponent() {
         finalOrderId = createdOrders.order_id;
       }
 
-      const { data, error: functionError } = await supabase.functions.invoke(
-        "process-payment",
-        {
-          body: {
+      // 1. Record the transaction as PAID automatically
+      const { error: transError } = await supabase
+        .from("transactions")
+        .insert([
+          {
             order_id: finalOrderId,
-            payment_method: mappedMethod,
+            customer_id: currentUserId,
             amount: total,
-            delivery_fee: deliveryFee
+            payment_method: mappedMethod,
+            status: "paid" // Customer payment is now automatic
           }
-        }
-      );
+        ]);
 
-      if (functionError || !data?.success) {
-        // Fallback: Manually insert transaction and earning if function fails
-        const { error: transError } = await supabase
-          .from("transactions")
-          .insert([
-            {
-              order_id: finalOrderId,
-              customer_id: currentUserId,
-              amount: total,
-              payment_method: mappedMethod,
-              status: "paid"
-            }
-          ]);
+      if (transError) throw transError;
 
-        if (transError) throw transError;
+      // 2. Set Order to WAITING status immediately so it's live
+      await supabase
+        .from("orders")
+        .update({ status: "WAITING" })
+        .eq("order_id", finalOrderId);
 
-        // Ensure freelance earning is created matching the delivery fee
-        const { data: orderData } = await supabase
-          .from("orders")
-          .select("freelance_id")
-          .eq("order_id", finalOrderId)
-          .single();
+      // 3. Create freelance earning as PENDING for admin approval later
+      const { data: orderData } = await supabase
+        .from("orders")
+        .select("freelance_id")
+        .eq("order_id", finalOrderId)
+        .single();
 
-        if (orderData?.freelance_id) {
-          await supabase.from("freelance_earnings").insert({
+      if (orderData?.freelance_id) {
+        await supabase.from("freelance_earnings").insert({
+          order_id: finalOrderId,
+          freelance_id: orderData.freelance_id,
+          amount: deliveryFee,
+          status: "pending" // Only the payout needs admin approval
+        });
+      }
+
+      // 4. Setup Chat Room
+      const { data: existingRoom } = await supabase
+        .from("chat_rooms")
+        .select("id")
+        .eq("order_id", finalOrderId)
+        .maybeSingle();
+
+      if (!existingRoom) {
+        const { data: newRoom } = await supabase
+          .from("chat_rooms")
+          .insert({
             order_id: finalOrderId,
-            freelance_id: orderData.freelance_id,
-            amount: deliveryFee, // Ensure this matches the delivery fee paid by customer
-            status: "pending"
+            customer_id: currentUserId,
+            freelancer_id: orderData?.freelance_id || null,
+            created_by: currentUserId,
+            last_message_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+        
+        if (newRoom) {
+          await supabase.from("chat_messages").insert({
+            room_id: newRoom.id,
+            order_id: finalOrderId,
+            sender_id: currentUserId,
+            content: "Order placed successfully. Waiting for delivery.",
+            message_type: "SYSTEM_ORDER_PAID"
           });
         }
-
-        const { data: existingRoom } = await supabase
-          .from("chat_rooms")
-          .select("id")
-          .eq("order_id", finalOrderId)
-          .maybeSingle();
-
-        if (!existingRoom) {
-          const { data: orderData } = await supabase
-            .from("orders")
-            .select("freelance_id")
-            .eq("order_id", finalOrderId)
-            .single();
-
-          const { data: newRoom } = await supabase
-            .from("chat_rooms")
-            .insert({
-              order_id: finalOrderId,
-              customer_id: currentUserId,
-              freelancer_id: orderData?.freelance_id || null,
-              created_by: currentUserId,
-              last_message_at: new Date().toISOString()
-            })
-            .select()
-            .single();
-          
-          if (newRoom) {
-            await supabase.from("chat_messages").insert({
-              room_id: newRoom.id,
-              order_id: finalOrderId,
-              sender_id: currentUserId,
-              content: "Order placed successfully. Waiting for freelancer.",
-              message_type: "SYSTEM_ORDER_PLACED"
-            });
-          }
-        }
-      } else if (data?.room_id) {
-        await supabase.from("chat_messages").insert({
-          room_id: data.room_id,
-          order_id: finalOrderId,
-          sender_id: currentUserId,
-          content: "Order paid and confirmed.",
-          message_type: "SYSTEM_ORDER_PAID"
-        });
       }
 
       clearCart();
       toast.dismiss(toastId);
-      toast.success("Payment successful!");
+      toast.success("Order placed successfully!");
 
       router.navigate({
         to: "/order-complete" as any,
         search: {
           order_id: finalOrderId,
-          payment_id: data?.payment_id || `TR-${Date.now()}`
+          payment_id: `TR-${Date.now()}`
         } as any
       });
     } catch (err: any) {
       toast.dismiss(toastId);
-      toast.error("Payment failed: " + err.message);
+      toast.error("Process failed: " + err.message);
     } finally {
       setIsSubmitting(false);
     }

@@ -1,21 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { 
-  Star, 
   ShieldCheck, 
   Truck, 
   RefreshCcw, 
-  Heart, 
-  Share2, 
   ChevronLeft, 
   ChevronRight,
-  MessageCircle,
   Package,
-  ThumbsUp,
   MapPin
 } from "lucide-react";
 import { useState } from "react";
 
-import favoriteIcon from "@/assets/3d659b7bdc33c87baf693bc75bf90986.jpg";
 import type { Address } from "@/types/address";
 import type { Product } from "@/types/product";
 
@@ -30,42 +24,21 @@ interface ProductDetailViewProps {
   existingQty: number;
   onAddToCart: () => void;
   onBuyNow: () => void;
+  relatedProducts: Product[];
 }
-
-// Mock Reviews
-const MOCK_REVIEWS = [
-  {
-    id: 1,
-    user: "Somchai P.",
-    rating: 5,
-    date: "2 days ago",
-    comment: "Excellent quality! My pet loves it so much. Fast delivery too.",
-    likes: 12
-  },
-  {
-    id: 2,
-    user: "Jane Doe",
-    rating: 4,
-    date: "1 week ago",
-    comment: "Good product, exactly as described. The packaging was very secure.",
-    likes: 5
-  }
-];
 
 export function ProductDetailView({
   product,
   pickupAddress,
-  pickupLookupHint,
   maxQty,
   qty,
   setQty,
   isOutOfStock,
-  existingQty,
   onAddToCart,
-  onBuyNow
+  onBuyNow,
+  relatedProducts
 }: ProductDetailViewProps) {
-  const [activeTab, setActiveTab] = useState<"description" | "reviews" | "shipping">("description");
-  const [isFavorite, setIsFavorite] = useState(false);
+  const [activeTab, setActiveTab] = useState<"description" | "shipping">("description");
 
   return (
     <div className="min-h-screen bg-[#FDFCFB] pt-24 pb-20">
@@ -89,24 +62,16 @@ export function ProductDetailView({
                   alt={product.name}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 />
-                <button 
-                  onClick={() => setIsFavorite(!isFavorite)}
-                  className="absolute top-4 right-4 p-3 rounded-full bg-white/80 backdrop-blur-sm shadow-lg hover:bg-white transition-all active:scale-95"
-                >
-                  <Heart className={`w-6 h-6 ${isFavorite ? "fill-red-500 text-red-500" : "text-gray-400"}`} />
-                </button>
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                  <div className="w-2 h-2 rounded-full bg-orange-600 shadow-sm" />
-                  <div className="w-2 h-2 rounded-full bg-gray-300 shadow-sm" />
-                  <div className="w-2 h-2 rounded-full bg-gray-300 shadow-sm" />
-                </div>
               </div>
               
               {/* Thumbnail Mockup */}
               <div className="grid grid-cols-4 gap-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className={`aspect-square rounded-xl border-2 overflow-hidden bg-white cursor-pointer transition-all hover:border-orange-400 ${i === 1 ? "border-orange-500 shadow-md" : "border-transparent"}`}>
-                    <img src={product.image_url || "https://via.placeholder.com/200x200"} className="w-full h-full object-cover opacity-80" />
+                <div className={`aspect-square rounded-xl border-2 overflow-hidden bg-white cursor-pointer transition-all border-orange-500 shadow-md`}>
+                  <img src={product.image_url || "https://via.placeholder.com/200x200"} className="w-full h-full object-cover" />
+                </div>
+                {[2, 3, 4].map((i) => (
+                  <div key={i} className={`aspect-square rounded-xl border-2 overflow-hidden bg-white cursor-pointer transition-all border-transparent hover:border-orange-400`}>
+                    <img src="https://via.placeholder.com/200x200" className="w-full h-full object-cover opacity-40" />
                   </div>
                 ))}
               </div>
@@ -118,28 +83,11 @@ export function ProductDetailView({
                 <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${isOutOfStock ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
                   {isOutOfStock ? "Out of Stock" : "In Stock"}
                 </span>
-                <button className="text-gray-400 hover:text-orange-600 transition-colors">
-                  <Share2 className="w-5 h-5" />
-                </button>
               </div>
 
-              <h1 className="text-3xl md:text-4xl font-black text-[#4A2600] mb-4 leading-tight">
+              <h1 className="text-3xl md:text-4xl font-black text-[#4A2600] mb-6 leading-tight">
                 {product.name}
               </h1>
-
-              {/* Rating Summary */}
-              <div className="flex items-center gap-4 mb-6">
-                <div className="flex text-yellow-400">
-                  {[1, 2, 3, 4, 5].map((s) => <Star key={s} className="w-5 h-5 fill-current" />)}
-                </div>
-                <span className="text-sm font-bold text-gray-500">(4.8 / 5.0)</span>
-                <button 
-                  onClick={() => setActiveTab("reviews")}
-                  className="text-sm font-black text-orange-600 hover:underline"
-                >
-                  See 24 reviews
-                </button>
-              </div>
 
               <div className="bg-linear-to-br from-orange-50 to-orange-100/50 rounded-3xl p-6 mb-8 border border-orange-100 shadow-sm">
                 <p className="text-xs text-orange-800/60 font-black uppercase tracking-widest mb-1">Current Price</p>
@@ -221,11 +169,11 @@ export function ProductDetailView({
           {/* Tabs Section */}
           <div className="border-t border-gray-100">
             <div className="flex overflow-x-auto no-scrollbar border-b border-gray-100">
-              {(["description", "reviews", "shipping"] as const).map((tab) => (
+              {(["description", "shipping"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-8 py-5 text-sm font-black uppercase tracking-widest whitespace-nowrap border-b-4 transition-all ${
+                  className={`px-12 py-5 text-sm font-black uppercase tracking-widest whitespace-nowrap border-b-4 transition-all ${
                     activeTab === tab 
                       ? "border-orange-600 text-orange-600 bg-orange-50/30" 
                       : "border-transparent text-gray-400 hover:text-orange-400"
@@ -259,46 +207,6 @@ export function ProductDetailView({
                     ) : (
                       <p className="text-gray-400 italic">Delivery only item</p>
                     )}
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "reviews" && (
-                <div className="space-y-10">
-                  <div className="flex flex-col md:flex-row gap-10">
-                    <div className="shrink-0 space-y-4">
-                      <p className="text-6xl font-black text-[#4A2600]">4.8</p>
-                      <div className="flex text-yellow-400">
-                        {[1, 2, 3, 4, 5].map((s) => <Star key={s} className="w-5 h-5 fill-current" />)}
-                      </div>
-                      <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Based on 24 reviews</p>
-                    </div>
-                    
-                    <div className="flex-1 space-y-8">
-                      {MOCK_REVIEWS.map((review) => (
-                        <div key={review.id} className="space-y-4 pb-8 border-b border-gray-100 last:border-0">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-black text-[#4A2600]">{review.user}</p>
-                              <div className="flex items-center gap-3">
-                                <div className="flex text-yellow-400">
-                                  {Array.from({ length: review.rating }).map((_, i) => <Star key={i} className="w-3 h-3 fill-current" />)}
-                                </div>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase">{review.date}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-50 text-gray-400 hover:text-orange-600 cursor-pointer transition-colors">
-                              <ThumbsUp className="w-3 h-3" />
-                              <span className="text-[10px] font-black">{review.likes}</span>
-                            </div>
-                          </div>
-                          <p className="text-gray-600 leading-relaxed">{review.comment}</p>
-                        </div>
-                      ))}
-                      <button className="w-full py-4 rounded-2xl border-2 border-dashed border-gray-200 text-gray-400 font-black uppercase tracking-widest hover:border-orange-200 hover:text-orange-400 transition-all">
-                        Write a review
-                      </button>
-                    </div>
                   </div>
                 </div>
               )}
@@ -351,34 +259,38 @@ export function ProductDetailView({
           </div>
         </div>
 
-        {/* Related Products Section (Mock) */}
-        <section className="mt-20">
-          <div className="flex justify-between items-end mb-8">
-            <div>
-              <p className="text-xs font-black text-orange-600 uppercase tracking-[0.2em] mb-2">You might also like</p>
-              <h2 className="text-3xl font-black text-[#4A2600]">Related Products</h2>
-            </div>
-            <Link to="/product" className="hidden sm:flex items-center gap-2 text-sm font-black text-orange-600 hover:translate-x-1 transition-transform">
-              View All <ChevronRight className="w-4 h-4" />
-            </Link>
-          </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="group cursor-pointer">
-                <div className="aspect-square rounded-3xl overflow-hidden bg-white border border-gray-100 shadow-sm mb-4 relative">
-                  <img src="https://via.placeholder.com/400x400" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                  <div className="absolute top-3 right-3 p-2 rounded-full bg-white/80 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Heart className="w-4 h-4 text-gray-400" />
-                  </div>
-                </div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Treats & Snacks</p>
-                <h4 className="font-black text-[#4A2600] group-hover:text-orange-600 transition-colors truncate">Premium Healthy Mix {i}</h4>
-                <p className="text-orange-600 font-black">฿ {(120 + i * 50).toLocaleString()}</p>
+        {/* Real Related Products Section */}
+        {relatedProducts && relatedProducts.length > 0 && (
+          <section className="mt-20">
+            <div className="flex justify-between items-end mb-8">
+              <div>
+                <p className="text-xs font-black text-orange-600 uppercase tracking-[0.2em] mb-2">You might also like</p>
+                <h2 className="text-3xl font-black text-[#4A2600]">Related Products</h2>
               </div>
-            ))}
-          </div>
-        </section>
+              <Link to="/product" className="hidden sm:flex items-center gap-2 text-sm font-black text-orange-600 hover:translate-x-1 transition-transform">
+                View All <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              {relatedProducts.map((item) => (
+                <Link 
+                  key={item.product_id}
+                  to="/product/$product_id"
+                  params={{ product_id: item.product_id }}
+                  className="group cursor-pointer"
+                >
+                  <div className="aspect-square rounded-3xl overflow-hidden bg-white border border-gray-100 shadow-sm mb-4 relative">
+                    <img src={item.image_url || "https://via.placeholder.com/400x400"} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  </div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{item.category || "General"}</p>
+                  <h4 className="font-black text-[#4A2600] group-hover:text-orange-600 transition-colors truncate">{item.name}</h4>
+                  <p className="text-orange-600 font-black">฿ {item.price.toLocaleString()}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

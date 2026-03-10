@@ -42,7 +42,7 @@ export function PaymentSummary({
           </p>
         </div>
         <div className="flex items-center justify-between">
-          <p className="text-gray-600">Tax (3%)</p>
+          <p className="text-gray-600">Web Service Fee (3%)</p>
           <p className="font-semibold text-[#4A2600]">
             ฿ {tax.toFixed(2)}
           </p>
