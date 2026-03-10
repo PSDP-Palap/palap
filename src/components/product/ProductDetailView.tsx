@@ -38,7 +38,7 @@ export function ProductDetailView({
               <div className="bg-orange-50 rounded-2xl p-4 border border-orange-100">
                 <img
                   src={
-                    product.image_url || "https://via.placeholder.com/600x600"
+                    product.image_url || "/shiba.png"
                   }
                   alt={product.name}
                   className="w-full aspect-square object-cover rounded-xl"
@@ -76,7 +76,7 @@ export function ProductDetailView({
                   Description
                 </p>
                 <p className="text-sm text-gray-700 leading-relaxed">
-                  {product.description || "No description available"}
+                  {product.description || ""}
                 </p>
               </div>
 

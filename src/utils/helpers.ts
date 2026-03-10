@@ -63,23 +63,17 @@ export const cleanPreviewMessage = (
   message: string | null | undefined,
   type?: string | null
 ): string => {
-  if (!message) return "No message yet";
+  if (!message && type !== "IMAGE") return "No message yet";
   const upperType = String(type || "").toUpperCase();
   if (upperType === "IMAGE") return "📷 Image";
-  if (message.startsWith("[CHAT_IMAGE]")) return "📷 Image";
+  if (message?.startsWith("[CHAT_IMAGE]")) return "📷 Image";
 
-  // Strip all [SYSTEM_...] prefixes
-  const cleaned = message.replace(/^\[SYSTEM_[^\]]+\]\s*/i, "").trim();
-  return cleaned || "System message";
+  return message?.trim() || "System message";
 };
 
 export const isSystemMessage = (
-  message: string | null | undefined,
   type?: string | null
 ): boolean => {
   const upperType = String(type || "").toUpperCase();
-  if (upperType === "SYSTEM") return true;
-  if (upperType.startsWith("SYSTEM_")) return true;
-  if (!message) return false;
-  return /^\[SYSTEM_[^\]]+\]/i.test(message);
+  return upperType === "SYSTEM" || upperType.startsWith("SYSTEM_");
 };

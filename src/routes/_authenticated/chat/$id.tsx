@@ -437,13 +437,8 @@ function ChatRouteComponent() {
       try {
         setSending(true);
 
-        let mType = forceType || "TEXT";
-        let finalContent = text;
-
-        if (mType.startsWith("SYSTEM_")) {
-          finalContent = `[${mType}] ${text}`;
-          mType = "SYSTEM";
-        }
+        const mType = forceType || "TEXT";
+        const finalContent = text;
 
         const { data: newMessage, error: sendError } = await withTimeout(
           supabase

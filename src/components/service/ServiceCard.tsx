@@ -4,14 +4,10 @@ import type { Service } from "@/types/service";
 
 interface ServiceCardProps {
   service: Service;
-  defaultImage: string;
-  defaultDescription: string;
 }
 
 export function ServiceCard({
-  service,
-  defaultImage,
-  defaultDescription
+  service
 }: ServiceCardProps) {
   const router = useRouter();
 
@@ -28,7 +24,7 @@ export function ServiceCard({
       >
         <div className="w-full h-44 bg-gray-50 rounded-xl overflow-hidden border border-gray-100 mb-4">
           <img
-            src={service.image_url || defaultImage}
+            src={service.image_url || "/dog.png"}
             alt={service.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
@@ -38,7 +34,7 @@ export function ServiceCard({
           {service.name}
         </h3>
         <p className="text-base text-gray-700 line-clamp-3 leading-relaxed grow">
-          {service.description || defaultDescription}
+          {service.description || ""}
         </p>
 
         <div className="mt-6 pt-4 border-t border-gray-50 flex items-center justify-between">

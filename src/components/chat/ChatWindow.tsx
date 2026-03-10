@@ -105,15 +105,10 @@ export function ChatWindow({
     rawMessage: string | null | undefined,
     type?: string
   ) => {
-    const message = String(rawMessage || "");
+    const message = String(rawMessage || "").trim();
     const upperType = String(type || "").toUpperCase();
-    if (upperType.startsWith("SYSTEM_")) {
-      return (
-        message
-          .replace(/\b(SERVICE|PRICE|CUSTOMER|FREELANCER|ORDER):[^\s]+/gi, "")
-          .replace(/\s{2,}/g, " ")
-          .trim() || "System update"
-      );
+    if (upperType === "SYSTEM" || upperType.startsWith("SYSTEM_")) {
+      return message || "System update";
     }
     return message;
   };

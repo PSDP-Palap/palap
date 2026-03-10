@@ -32,7 +32,7 @@ export function ProductCard({
         <div className="flex justify-between items-start mb-4">
           <div className="w-20 h-20 bg-gray-50 rounded-xl overflow-hidden border border-gray-100">
             <img
-              src={product.image_url || "https://via.placeholder.com/80"}
+              src={product.image_url || "/shiba.png"}
               alt={product.name}
               className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
             />

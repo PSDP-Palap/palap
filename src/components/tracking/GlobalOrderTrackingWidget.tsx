@@ -110,9 +110,7 @@ function GlobalOrderTrackingWidget() {
         const { data: doneRows } = await supabase
           .from("chat_messages")
           .select("order_id, content, message_type")
-          .or(
-            "message_type.eq.SYSTEM_DELIVERY_DONE,content.like.[SYSTEM_DELIVERY_DONE] ORDER:%"
-          )
+          .eq("message_type", "SYSTEM_DELIVERY_DONE")
           .order("created_at", { ascending: false })
           .limit(500);
 

@@ -154,7 +154,7 @@ export const Route = createFileRoute("/service/$service_id")({
                 customer_id: customerId,
                 customer_name: p?.full_name || "Customer",
                 customer_avatar_url: p?.avatar_url || null,
-                request_message: state.requestMessage || DEFAULT_HIRE_MESSAGE
+                request_message: state.requestMessage || ""
               };
             })
             .filter(Boolean) as PendingHireRoomView[];
@@ -195,26 +195,6 @@ export const Route = createFileRoute("/service/$service_id")({
   )
 });
 
-const DEFAULT_DESCRIPTION =
-  "Reliable and professional pet service tailored for your needs.";
-const DEFAULT_IMAGE =
-  "https://images.unsplash.com/photo-1517849845537-4d257902454a?q=80&w=1200&auto=format&fit=crop";
-const DEFAULT_HIRE_MESSAGE =
-  "Hi, I want to hire this service. Could you share more details before we proceed?";
-const SYSTEM_REQUEST_PREFIX = "[SYSTEM_HIRE_REQUEST]";
-const SYSTEM_ACCEPT_PREFIX = "[SYSTEM_HIRE_ACCEPTED]";
-const SYSTEM_DECLINE_PREFIX = "[SYSTEM_HIRE_DECLINED]";
-const SYSTEM_CANCEL_PREFIX = "[SYSTEM_HIRE_CANCELED]";
-
-const toSystemRequestMessage = (text: string) =>
-  `${SYSTEM_REQUEST_PREFIX} ${text}`;
-const toSystemAcceptMessage = (text: string) =>
-  `${SYSTEM_ACCEPT_PREFIX} ${text}`;
-const toSystemDeclineMessage = (text: string) =>
-  `${SYSTEM_DECLINE_PREFIX} ${text}`;
-const toSystemCancelMessage = (text: string) =>
-  `${SYSTEM_CANCEL_PREFIX} ${text}`;
-
 const deriveHireStateFromMessages = (rows: any[]) => {
   let nextState: "idle" | "requested" | "accepted" = "idle";
   let requestMessage = "";
@@ -223,27 +203,6 @@ const deriveHireStateFromMessages = (rows: any[]) => {
     const type = String(row?.message_type || "").toUpperCase();
     const content = String(row?.content || "");
 
-    if (type === "SYSTEM") {
-      if (content.startsWith(SYSTEM_REQUEST_PREFIX)) {
-        nextState = "requested";
-        requestMessage = content.replace(SYSTEM_REQUEST_PREFIX, "").trim();
-        continue;
-      }
-      if (content.startsWith(SYSTEM_ACCEPT_PREFIX)) {
-        nextState = "accepted";
-        continue;
-      }
-      if (content.startsWith(SYSTEM_DECLINE_PREFIX)) {
-        nextState = "idle";
-        continue;
-      }
-      if (content.startsWith(SYSTEM_CANCEL_PREFIX)) {
-        nextState = "idle";
-        continue;
-      }
-    }
-
-    // Support legacy message types during transition
     if (type === "SYSTEM_HIRE_REQUEST") {
       nextState = "requested";
       requestMessage = content;
@@ -253,8 +212,24 @@ const deriveHireStateFromMessages = (rows: any[]) => {
       nextState = "accepted";
       continue;
     }
-    if (type === "SYSTEM_HIRE_DECLINED") {
+    if (type === "SYSTEM_HIRE_DECLINED" || type === "SYSTEM_HIRE_CANCELED") {
       nextState = "idle";
+      continue;
+    }
+
+    // Legacy support for SYSTEM + Prefix
+    if (type === "SYSTEM") {
+      if (content.startsWith("[SYSTEM_HIRE_REQUEST]")) {
+        nextState = "requested";
+        requestMessage = content.replace("[SYSTEM_HIRE_REQUEST]", "").trim();
+      } else if (content.startsWith("[SYSTEM_HIRE_ACCEPTED]")) {
+        nextState = "accepted";
+      } else if (
+        content.startsWith("[SYSTEM_HIRE_DECLINED]") ||
+        content.startsWith("[SYSTEM_HIRE_CANCELED]")
+      ) {
+        nextState = "idle";
+      }
     }
   }
 
@@ -293,7 +268,7 @@ function RouteComponent() {
   );
 
   const [hireRequestMessage, setHireRequestMessage] =
-    useState(DEFAULT_HIRE_MESSAGE);
+    useState("");
   const [sendingHireRequest, setSendingHireRequest] = useState(false);
   const [cancelingHireRequest, setCancelingHireRequest] = useState(false);
   const [requestLoading, setRequestLoading] = useState(false);
@@ -508,7 +483,7 @@ function RouteComponent() {
                 customer_id: customerId,
                 customer_name: profile?.full_name || "Customer",
                 customer_avatar_url: profile?.avatar_url || null,
-                request_message: state.requestMessage || DEFAULT_HIRE_MESSAGE
+                request_message: state.requestMessage || ""
               };
             })
             .filter(Boolean) as PendingHireRoomView[];
@@ -682,16 +657,12 @@ function RouteComponent() {
 
       if (roomError) throw roomError;
 
-      const systemMsg = toSystemRequestMessage(
-        hireRequestMessage || DEFAULT_HIRE_MESSAGE
-      );
-
       await supabase.from("chat_messages").insert({
         room_id: newRoom.id,
         order_id: service_id,
         sender_id: currentUserId,
-        content: systemMsg,
-        message_type: "SYSTEM"
+        content: hireRequestMessage || "I want to hire this service.",
+        message_type: "SYSTEM_HIRE_REQUEST"
       });
 
       setIsHireRequested(true);
@@ -734,8 +705,8 @@ function RouteComponent() {
           room_id: room.id,
           order_id: service_id,
           sender_id: currentUserId,
-          content: toSystemCancelMessage("Customer canceled this hire request."),
-          message_type: "SYSTEM"
+          content: "Customer canceled this hire request.",
+          message_type: "SYSTEM_HIRE_CANCELED"
         });
       }
 
@@ -771,16 +742,12 @@ function RouteComponent() {
           .eq("order_id", order.order_id);
       }
 
-      const systemMsg = toSystemAcceptMessage(
-        "Freelancer accepted your hire request. You can now chat!"
-      );
-
       await supabase.from("chat_messages").insert({
         room_id: request.room_id,
         order_id: service_id,
         sender_id: currentUserId,
-        content: systemMsg,
-        message_type: "SYSTEM"
+        content: "Freelancer accepted your hire request. You can now chat!",
+        message_type: "SYSTEM_HIRE_ACCEPTED"
       });
 
       setPendingHireRequests((prev) =>
@@ -817,16 +784,12 @@ function RouteComponent() {
           .eq("order_id", order.order_id);
       }
 
-      const systemMsg = toSystemDeclineMessage(
-        "Freelancer declined your hire request."
-      );
-
       await supabase.from("chat_messages").insert({
         room_id: request.room_id,
         order_id: service_id,
         sender_id: currentUserId,
-        content: systemMsg,
-        message_type: "SYSTEM"
+        content: "Freelancer declined your hire request.",
+        message_type: "SYSTEM_HIRE_DECLINED"
       });
 
       setPendingHireRequests((prev) =>
@@ -872,9 +835,6 @@ function RouteComponent() {
     <ServiceDetailView
       service={service}
       creator={creator}
-      defaultImage={DEFAULT_IMAGE}
-      defaultDescription={DEFAULT_DESCRIPTION}
-      defaultHireMessage={DEFAULT_HIRE_MESSAGE}
       openChat={goToOrderDetails}
       startingChat={false}
       canTryHire={canTryHire}

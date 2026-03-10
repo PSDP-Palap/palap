@@ -51,13 +51,12 @@ const ServiceSection = () => {
             className="group"
           >
             <div
-              className="flex flex-col p-0 rounded-[2.5rem] shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300 border border-orange-100 overflow-hidden group relative"
+              className="flex flex-col rounded-[2.5rem] shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300 border border-orange-100 overflow-hidden group relative"
               style={{
                 background:
                   "linear-gradient(135deg, rgba(255, 155, 69, 0.3) 0%, rgba(255, 155, 69, 1) 100%)"
               }}
             >
-              {/* Category Badge */}
               <div className="absolute top-4 right-4 z-10">
                 <span className="px-3 py-1 bg-white/80 backdrop-blur-sm text-[#9a3c0b] text-xs font-black rounded-full shadow-sm border border-white/50">
                   {categoryLabelMap[service.category]}

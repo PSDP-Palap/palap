@@ -35,9 +35,9 @@ export function OrderItemsList({
             >
               <div className="flex items-center gap-2 min-w-0">
                 <img
-                  src={row.imageUrl || "https://via.placeholder.com/48"}
+                  src={row.imageUrl || "/shiba.png"}
                   alt={row.name}
-                  className="w-10 h-10 rounded-md object-cover border border-gray-100 bg-white"
+                  className="w-12 h-12 rounded-lg object-cover border border-orange-100 flex-none"
                 />
                 <div className="min-w-0">
                   <p className="font-bold text-[#4A2600] truncate">{row.name}</p>

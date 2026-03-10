@@ -90,9 +90,7 @@ function OrderHistoryPage() {
                 .from("chat_messages")
                 .select("order_id, content, message_type")
                 .in("order_id", orderIds)
-                .or(
-                  "message_type.eq.SYSTEM_DELIVERY_DONE,content.like.[SYSTEM_DELIVERY_DONE] ORDER:%"
-                )
+                .eq("message_type", "SYSTEM_DELIVERY_DONE")
                 .order("created_at", { ascending: false })
                 .limit(500)
             : Promise.resolve({ data: [] as any[] })

@@ -396,7 +396,6 @@ const FloatingChatWidget = () => {
           const key = String(row.room_id);
           if (latestMessageByRoom.has(key)) return;
           const upperType = String(row.message_type || "").toUpperCase();
-          if (upperType.startsWith("SYSTEM_")) return;
 
           latestMessageByRoom.set(key, {
             content: row.content ?? "",

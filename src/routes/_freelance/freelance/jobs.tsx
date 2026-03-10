@@ -272,8 +272,7 @@ function JobsRoute() {
         messages.data
           ?.filter(
             (m) =>
-              String(m.message_type).toUpperCase() === "SYSTEM_DELIVERY_DONE" ||
-              String(m.content).startsWith("[SYSTEM_DELIVERY_DONE]")
+              String(m.message_type).toUpperCase() === "SYSTEM_DELIVERY_DONE"
           )
           .map((m) => String(m.order_id))
       );

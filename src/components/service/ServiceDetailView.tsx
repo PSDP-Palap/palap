@@ -7,9 +7,6 @@ import type { FreelanceProfile } from "@/types/user";
 interface ServiceDetailViewProps {
   service: Service;
   creator: FreelanceProfile;
-  defaultImage: string;
-  defaultDescription: string;
-  defaultHireMessage: string;
   openChat: () => Promise<void>;
   startingChat: boolean;
   canTryHire: boolean;
@@ -39,9 +36,6 @@ interface ServiceDetailViewProps {
 export function ServiceDetailView({
   service,
   creator,
-  defaultImage,
-  defaultDescription,
-  defaultHireMessage,
   openChat,
   startingChat,
   canTryHire,
@@ -73,7 +67,7 @@ export function ServiceDetailView({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-orange-50 rounded-2xl p-4 border border-orange-100">
               <img
-                src={service.image_url || defaultImage}
+                src={service.image_url || "/dog.png"}
                 alt={service.name}
                 className="w-full aspect-4/3 object-cover rounded-xl"
               />
@@ -88,7 +82,7 @@ export function ServiceDetailView({
               </h1>
 
               <p className="text-lg text-gray-700 leading-relaxed">
-                {service.description || defaultDescription}
+                {service.description || ""}
               </p>
 
               <div className="space-y-2 text-sm text-gray-700 bg-gray-50 rounded-xl p-4 border border-gray-100">
@@ -287,7 +281,7 @@ export function ServiceDetailView({
                               {request.customer_name}
                             </p>
                             <p className="text-xs text-gray-500 truncate">
-                              {request.request_message || defaultHireMessage}
+                              {request.request_message || ""}
                             </p>
                           </div>
                         </div>
