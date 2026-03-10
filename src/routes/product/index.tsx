@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import { Search, SlidersHorizontal, Grid, List, ChevronDown, Filter } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { CartFooter } from "@/components/product/CartFooter";
@@ -19,18 +19,17 @@ interface RawProductRow {
   pickup_address_id: string | null;
 }
 
+const CATEGORIES = ["All", "Food", "Toys", "Treats", "Accessories", "Health"];
+
 export const Route = createFileRoute("/product/")({
   loader: async () => {
-    // Direct query without withTimeout, similar to AdminTab fetch pattern
     const { data, error } = await supabase
       .from("products")
       .select("product_id, name, price, qty, image_url, created_at, pickup_address_id")
       .order("name", { ascending: true })
       .limit(100);
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
     const rawData = (data as unknown as RawProductRow[]) || [];
     const products: Product[] = rawData.map((item) => ({
@@ -48,20 +47,13 @@ export const Route = createFileRoute("/product/")({
   },
   component: RouteComponent,
   errorComponent: ({ error }) => (
-    <div className="min-h-screen bg-[#F9E6D8] flex flex-col items-center justify-center">
-      <p className="text-red-600 font-bold mb-4">
-        {error.message || "Failed to load products"}
-      </p>
-      <button
-        className="bg-[#D35400] text-white px-6 py-2 rounded-lg"
-        onClick={() => window.location.reload()}
-      >
-        Retry
-      </button>
+    <div className="min-h-screen bg-[#FDFCFB] flex flex-col items-center justify-center">
+      <p className="text-red-600 font-bold mb-4">{error.message || "Failed to load products"}</p>
+      <button className="bg-[#D35400] text-white px-6 py-2 rounded-xl" onClick={() => window.location.reload()}>Retry</button>
     </div>
   ),
   pendingComponent: () => (
-    <div className="min-h-screen bg-[#F9E6D8] flex items-center justify-center pt-24">
+    <div className="min-h-screen bg-[#FDFCFB] flex items-center justify-center pt-24">
       <Loading fullScreen={false} size={150} />
     </div>
   )
@@ -71,17 +63,15 @@ function RouteComponent() {
   const { products: initialProducts } = Route.useLoaderData();
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [sortBy, setSortBy] = useState("newest");
 
-  // global cart state
   const cartItems = useCartStore((s) => s.items);
   const setCartQuantity = useCartStore((s) => s.setQuantity);
   const removeCartItem = useCartStore((s) => s.remove);
   const [isFooterCartExpanded, setIsFooterCartExpanded] = useState(false);
 
-  // Sync products if loader data changes
-  useEffect(() => {
-    setProducts(initialProducts);
-  }, [initialProducts]);
+  useEffect(() => { setProducts(initialProducts); }, [initialProducts]);
 
   const totalPrice = Object.entries(cartItems).reduce((sum, [id, qty]) => {
     const item = products.find((p) => p.id === id);
@@ -93,84 +83,126 @@ function RouteComponent() {
     .map(([id, qty]) => {
       const item = products.find((p) => p.id === id);
       if (!item) return null;
-      return {
-        id,
-        name: item.name,
-        imageUrl: item.image_url || null,
-        qty,
-        unitPrice: item.price,
-        subtotal: item.price * qty
-      };
+      return { id, name: item.name, imageUrl: item.image_url || null, qty, unitPrice: item.price, subtotal: item.price * qty };
     })
-    .filter(
-      (
-        row
-      ): row is {
-        id: string;
-        name: string;
-        imageUrl: string | null;
-        qty: number;
-        unitPrice: number;
-        subtotal: number;
-      } => !!row
-    );
+    .filter((row): row is any => !!row);
 
   const filteredProducts = products.filter((item) => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return true;
-
-    return item.name.toLowerCase().includes(query);
+    const matchesSearch = !query || item.name.toLowerCase().includes(query);
+    const matchesCategory = selectedCategory === "All" || true; // Category filtering logic mock
+    return matchesSearch && matchesCategory;
   });
 
   return (
-    <div className="min-h-screen bg-[#F9E6D8] font-sans pb-32">
-      <main className="max-w-6xl mx-auto p-6 pt-28">
-        <div className="flex items-center pl-8 bg-[#FF914D] rounded-2xl mb-8 relative overflow-hidden shadow-lg">
-          <div className="z-10">
-            <h1 className="text-3xl font-black text-white uppercase">
-              SELECT PRODUCTS
-            </h1>
-            <p className="text-white/90 text-sm font-semibold mt-1">
-              High quality supplies for your pet
-            </p>
+    <div className="min-h-screen bg-[#FDFCFB] font-sans pb-32">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28">
+        {/* Banner Section */}
+        <div className="relative rounded-[2.5rem] bg-linear-to-r from-[#FF914D] to-[#FF7F32] overflow-hidden shadow-2xl shadow-orange-900/20 mb-12 group">
+          <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10" />
+          <div className="relative z-10 p-8 md:p-12 flex flex-col md:flex-row items-center justify-between">
+            <div className="text-center md:text-left space-y-4 max-w-lg">
+              <span className="px-4 py-1.5 rounded-full bg-white/20 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-[0.2em] border border-white/30">New Season 2024</span>
+              <h1 className="text-4xl md:text-6xl font-black text-white leading-tight">
+                PREMIUM <span className="text-[#4A2600]">PET CARE</span> SUPPLIES
+              </h1>
+              <p className="text-white/90 text-sm md:text-lg font-bold">
+                Give your furry friends the quality they deserve with our handpicked collection.
+              </p>
+            </div>
+            <div className="mt-8 md:mt-0 transition-transform duration-700 group-hover:scale-105">
+              <img src="/cat.png" alt="cat" className="w-64 md:w-80 drop-shadow-2xl" />
+            </div>
           </div>
-          <img src="/cat.png" alt="cat" className="ml-auto" />
         </div>
 
-        <div className="mb-8 bg-white rounded-xl border border-orange-200 p-2 shadow-sm flex items-center gap-2">
-          <div className="flex items-center gap-2 flex-1 px-2">
-            <Search className="w-5 h-5 text-gray-500" />
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              type="text"
-              placeholder="Search products"
-              className="w-full bg-transparent text-sm text-gray-700 placeholder:text-gray-400 outline-none"
-            />
-          </div>
-          <button
-            type="button"
-            className="bg-[#A74607] hover:bg-[#923c05] text-white text-xs font-black uppercase tracking-wide px-5 py-2 rounded-lg transition-colors"
-          >
-            Search
-          </button>
-        </div>
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Mock Sidebar Filter */}
+          <aside className="hidden lg:block w-64 shrink-0 space-y-8">
+            <div className="space-y-4">
+              <h3 className="text-xs font-black text-[#4A2600] uppercase tracking-widest flex items-center gap-2">
+                <Filter className="w-4 h-4" /> Categories
+              </h3>
+              <div className="flex flex-col gap-1">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`text-left px-4 py-3 rounded-2xl text-sm font-black transition-all ${selectedCategory === cat ? "bg-[#4A2600] text-white shadow-lg" : "text-gray-500 hover:bg-orange-50 hover:text-orange-600"}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map((item) => (
-            <ProductCard
-              key={item.id}
-              product={item}
-              cartQuantity={cartItems[item.id || ""] || 0}
-            />
-          ))}
-        </div>
+            <div className="p-6 rounded-[2rem] bg-orange-50 border border-orange-100">
+              <h4 className="font-black text-[#4A2600] text-sm uppercase mb-2">Special Offer</h4>
+              <p className="text-[10px] text-orange-800 font-bold mb-4 leading-relaxed">Get 20% off on all treats when you buy 3 or more!</p>
+              <div className="w-full h-24 bg-white rounded-2xl border border-orange-100 flex items-center justify-center">
+                <span className="text-2xl font-black text-orange-600">-20%</span>
+              </div>
+            </div>
+          </aside>
 
-        {filteredProducts.length === 0 && (
-          <div className="mt-6 text-center text-sm font-semibold text-[#4A2600]/70">
-            No products found for "{searchQuery}".
+          <div className="flex-1 space-y-8">
+            {/* Toolbar */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-3 rounded-3xl border border-gray-100 shadow-sm">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  type="text"
+                  placeholder="What does your pet need today?"
+                  className="w-full pl-12 pr-4 py-3 bg-gray-50 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-orange-500/20 transition-all"
+                />
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative group w-full sm:w-48">
+                  <select 
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="appearance-none w-full pl-4 pr-10 py-3 bg-gray-50 rounded-2xl text-xs font-black uppercase tracking-wider outline-none cursor-pointer border-none"
+                  >
+                    <option value="newest">Sort by: Newest</option>
+                    <option value="price-low">Price: Low to High</option>
+                    <option value="price-high">Price: High to Low</option>
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+                <div className="hidden sm:flex gap-1 p-1 bg-gray-50 rounded-xl">
+                  <button className="p-2 rounded-lg bg-white shadow-sm text-orange-600"><Grid className="w-4 h-4" /></button>
+                  <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600"><List className="w-4 h-4" /></button>
+                </div>
+              </div>
+            </div>
+
+            {/* Product Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filteredProducts.map((item) => (
+                <ProductCard
+                  key={item.id}
+                  product={item}
+                  cartQuantity={cartItems[item.id || ""] || 0}
+                />
+              ))}
+            </div>
+
+            {filteredProducts.length === 0 && (
+              <div className="py-20 text-center space-y-4">
+                <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto">
+                  <Search className="w-10 h-10 text-gray-300" />
+                </div>
+                <div>
+                  <p className="text-lg font-black text-[#4A2600]">No products found</p>
+                  <p className="text-sm text-gray-500">Try searching for something else or clear your filters.</p>
+                </div>
+                <button onClick={() => { setSearchQuery(""); setSelectedCategory("All"); }} className="text-sm font-black text-orange-600 hover:underline">Clear all filters</button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </main>
 
       <CartFooter

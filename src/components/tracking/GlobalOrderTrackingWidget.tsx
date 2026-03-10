@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useRouter, useRouterState } from "@tanstack/react-router";
-import { Truck, X } from "lucide-react";
+import { useRouter, useRouterState, Link } from "@tanstack/react-router";
+import { Truck, X, History, MapPin, Package, MessageCircle, RefreshCw, ChevronRight, CheckCircle2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -12,6 +12,13 @@ import {
   isCompletedOrderStatus
 } from "@/utils/helpers";
 import supabase, { isUuidLike } from "@/utils/supabase";
+
+const STATUS_STEPS = [
+  { key: "WAITING", label: "Waiting", icon: Package },
+  { key: "ON_MY_WAY", label: "On Way", icon: Truck },
+  { key: "IN_SERVICE", label: "Serving", icon: Package },
+  { key: "COMPLETE", label: "Complete", icon: CheckCircle2 }
+];
 
 const WAITING_STATUS_SET = new Set([
   "",
@@ -46,9 +53,10 @@ function GlobalOrderTrackingWidget() {
     setActiveOrderTracking: setTracking
   } = useOrderStore();
 
-  const [ongoingOrderIds, setOngoingOrderIds] = useState<string[]>([]);
+  const [ongoingOrders, setOngoingOrders] = useState<{ id: string; name: string; status: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"detail" | "list">("detail");
 
   const isFetchingOngoingRef = useRef(false);
   const isFetchingTrackingRef = useRef<string | null>(null);
@@ -71,7 +79,7 @@ function GlobalOrderTrackingWidget() {
     });
   };
 
-  const getOngoingOrderIds = useCallback(
+  const getOngoingOrdersData = useCallback(
     async (excludedOrderIds: string[] = [], force = false) => {
       if (isFetchingOngoingRef.current) return null;
       const now = Date.now();
@@ -95,7 +103,7 @@ function GlobalOrderTrackingWidget() {
         const { data: orderRows, error: orderError } = await supabase
           .from("orders")
           .select(
-            "order_id, status, created_at, customer_id, freelance_id, payment_id"
+            "order_id, status, product_id, service_id, payment_id"
           )
           .or(
             `customer_id.eq.${currentUserId},freelance_id.eq.${currentUserId}`
@@ -103,56 +111,48 @@ function GlobalOrderTrackingWidget() {
           .order("created_at", { ascending: false })
           .limit(50);
 
-        if (orderError) {
-          return null;
-        }
+        if (orderError) return null;
 
         const { data: doneRows } = await supabase
           .from("chat_messages")
-          .select("order_id, content, message_type")
-          .or(
-            "message_type.eq.SYSTEM_DELIVERY_DONE,content.like.[SYSTEM_DELIVERY_DONE] ORDER:%"
-          )
-          .order("created_at", { ascending: false })
-          .limit(500);
+          .select("order_id")
+          .eq("message_type", "SYSTEM_DELIVERY_DONE")
+          .order("created_at", { ascending: false });
 
         const doneOrderSet = new Set(
-          ((doneRows as any[]) ?? [])
-            .map((row: any) => {
-              const directId = String(row?.order_id || "").trim();
-              if (directId) return directId;
-              return getOrderIdFromSystemMessage(String(row?.content || ""));
-            })
-            .filter(Boolean)
+          ((doneRows as any[]) ?? []).map((row: any) => String(row?.order_id || "").trim()).filter(Boolean)
         );
 
-        const excludedSet = new Set(
-          excludedOrderIds.map((value) => String(value))
-        );
-        const ongoing = (orderRows as any[]).filter((row) => {
+        const excludedSet = new Set(excludedOrderIds.map(String));
+        const ongoingRows = (orderRows as any[]).filter((row) => {
           const rowOrderId = String(row?.order_id || "");
-          if (!rowOrderId) return false;
-          if (excludedSet.has(rowOrderId)) return false;
-          if (doneOrderSet.has(rowOrderId)) return false;
-
+          if (!rowOrderId || excludedSet.has(rowOrderId) || doneOrderSet.has(rowOrderId)) return false;
           const rawStatus = String(row?.status || "").toUpperCase();
-          const isFinished = isCompletedOrderStatus(rawStatus, row?.payment_id);
-
-          // Allow complete status if payment is still pending
-          if (rawStatus === "COMPLETE" && !row?.payment_id) {
-            return true;
-          }
-
-          if (isFinished) {
-            return false;
-          }
+          if (isCompletedOrderStatus(rawStatus, row?.payment_id) && row?.payment_id) return false;
           return true;
         });
 
-        const result = ongoing.map((row: any) => String(row.order_id));
+        // Fetch names for these orders
+        const productIds = Array.from(new Set(ongoingRows.map(r => r.product_id).filter(Boolean)));
+        const serviceIds = Array.from(new Set(ongoingRows.map(r => r.service_id).filter(Boolean)));
+
+        const [productsRes, servicesRes] = await Promise.all([
+          productIds.length > 0 ? supabase.from("products").select("product_id, name").in("product_id", productIds) : { data: [] },
+          serviceIds.length > 0 ? supabase.from("services").select("service_id, name").in("service_id", serviceIds) : { data: [] }
+        ]);
+
+        const nameMap = new Map();
+        (productsRes.data || []).forEach((p: any) => nameMap.set(String(p.product_id), p.name));
+        (servicesRes.data || []).forEach((s: any) => nameMap.set(String(s.service_id), s.name));
+
+        const result = ongoingRows.map((row: any) => ({
+          id: String(row.order_id),
+          name: nameMap.get(String(row.product_id || row.service_id)) || "Order " + String(row.order_id).slice(0, 4),
+          status: String(row.status || "WAITING").toUpperCase()
+        }));
 
         lastOngoingFetchTimeRef.current = Date.now();
-        setOngoingOrderIds(result);
+        setOngoingOrders(result);
         return result;
       } catch {
         return null;
@@ -343,10 +343,11 @@ function GlobalOrderTrackingWidget() {
     },
     [setTracking]
   );
+
   const handleManualRefresh = async () => {
     try {
       setLoading(true);
-      await getOngoingOrderIds([], true);
+      await getOngoingOrdersData([], true);
 
       if (activeOrderId) {
         await loadTracking(activeOrderId);
@@ -367,9 +368,9 @@ function GlobalOrderTrackingWidget() {
 
     let active = true;
     const boot = async () => {
-      const orderIds = await getOngoingOrderIds();
+      const orders = await getOngoingOrdersData();
       if (!active) return;
-      const orderId = orderIds?.[0] || null;
+      const orderId = orders?.[0]?.id || null;
       if (orderId) {
         setActiveOrderId(orderId);
         setOpen(true);
@@ -385,7 +386,7 @@ function GlobalOrderTrackingWidget() {
     userId,
     isInitialized,
     activeOrderId,
-    getOngoingOrderIds,
+    getOngoingOrdersData,
     setActiveOrderId,
     setTracking
   ]);
@@ -491,13 +492,17 @@ function GlobalOrderTrackingWidget() {
   const handlePay = async () => {
     if (!tracking || !userId) return;
     const price = tracking.price || 0;
-    const subtotal = price / 1.07;
-    const tax = price - subtotal;
+    
+    // Reverse calculation matching our 5% delivery fee + 3% tax logic:
+    const subtotal = price / 1.0815;
+    const deliveryFee = subtotal * 0.05;
+    const tax = (subtotal + deliveryFee) * 0.03;
 
     router.navigate({
       to: "/payment",
       search: {
         subtotal: Number(subtotal.toFixed(2)),
+        deliveryFee: Number(deliveryFee.toFixed(2)),
         tax: Number(tax.toFixed(2)),
         total: Number(price.toFixed(2)),
         order_id: tracking.orderId
@@ -510,8 +515,8 @@ function GlobalOrderTrackingWidget() {
       setLoading(true);
       suppressAutoPickRef.current = false;
 
-      const nextOrderIds = await getOngoingOrderIds();
-      const nextOrderId = nextOrderIds?.[0] || ongoingOrderIds[0] || null;
+      const nextOrders = await getOngoingOrdersData();
+      const nextOrderId = nextOrders?.[0]?.id || ongoingOrders[0]?.id || null;
 
       if (!nextOrderId) {
         toast("No ongoing orders to track right now.");
@@ -536,13 +541,27 @@ function GlobalOrderTrackingWidget() {
     return null;
   }
 
-  const statusDisplay =
-    String(tracking?.status || "").replaceAll("_", " ") || "WAITING";
-  const isActuallyWaiting = tracking
-    ? !tracking.freelanceId ||
-      WAITING_STATUS_SET.has(String(tracking.status || "").toUpperCase())
-    : true;
-  const isCompletedUnpaid = tracking?.status === "COMPLETE";
+  // Stepper logic
+  const currentStatusKey = String(tracking?.status || "").toUpperCase();
+  const getStepIndex = (status: string) => {
+    if (WAITING_STATUS_SET.has(status) || !status) return 0;
+    if (status === "ON_MY_WAY") return 1;
+    if (status === "IN_SERVICE") return 2;
+    if (status === "COMPLETE" || status === "DONE" || status === "DELIVERED") return 3;
+    return 0;
+  };
+  const activeStep = getStepIndex(currentStatusKey);
+
+  const getStatusColor = (status: string) => {
+    const s = status.toUpperCase();
+    if (WAITING_STATUS_SET.has(s)) return "text-orange-500 bg-orange-50";
+    if (s === "ON_MY_WAY") return "text-blue-500 bg-blue-50";
+    if (s === "IN_SERVICE") return "text-purple-500 bg-purple-50";
+    if (s === "COMPLETE" || s === "DONE" || s === "DELIVERED") return "text-green-500 bg-green-50";
+    return "text-gray-500 bg-gray-50";
+  };
+
+  const isCompletedUnpaid = tracking?.status === "COMPLETE" && !tracking.paymentId;
 
   return (
     <aside
@@ -553,190 +572,244 @@ function GlobalOrderTrackingWidget() {
       }`}
     >
       {open && (
-        <div className="mb-3 w-90 max-w-[calc(100vw-2rem)] max-h-[70vh] rounded-2xl border border-orange-200 bg-[#F9E6D8] text-[#4A2600] shadow-2xl overflow-hidden pointer-events-auto flex flex-col">
-          <div
-            onClick={openOrderPage}
-            className="px-4 py-3 border-b border-orange-200 bg-[#FF914D] flex items-center justify-between gap-2 cursor-pointer hover:bg-[#ff8533] transition-colors group"
-          >
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-wider text-white/85">
-                Track Order
-              </p>
-              <p className="text-sm font-black text-white truncate">
-                {activeOrderId || "..."}
+        <div className="mb-3 w-90 max-w-[calc(100vw-2rem)] max-h-[80vh] rounded-3xl border border-orange-200 bg-white text-[#4A2600] shadow-2xl overflow-hidden pointer-events-auto flex flex-col animate-in slide-in-from-bottom-4 duration-300">
+          {/* Header */}
+          <div className="px-5 py-4 bg-linear-to-r from-[#FF914D] to-[#FF7F32] flex items-center justify-between text-white shadow-md">
+            <div className="min-w-0 flex-1 cursor-pointer group" onClick={openOrderPage}>
+              <div className="flex items-center gap-1.5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/80">
+                  {viewMode === "list" ? "All Ongoing Jobs" : "Tracking Job"}
+                </p>
+                {viewMode === "detail" && <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />}
+              </div>
+              <p className="text-sm font-black truncate drop-shadow-sm">
+                {viewMode === "list" ? `${ongoingOrders.length} orders active` : (activeOrderId ? `#${activeOrderId.slice(0, 8)}...` : "Selecting...")}
               </p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span
-                className={`inline-flex px-2 py-1 rounded-full text-[10px] font-black uppercase ${isActuallyWaiting ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}
+            
+            <div className="flex items-center gap-2">
+              {ongoingOrders.length > 1 && (
+                <button
+                  onClick={() => setViewMode(viewMode === "detail" ? "list" : "detail")}
+                  className="p-2 hover:bg-white/20 rounded-xl transition-colors bg-white/10"
+                >
+                  {viewMode === "detail" ? <Package className="w-4 h-4" /> : <Truck className="w-4 h-4" />}
+                </button>
+              )}
+              <button 
+                onClick={() => setOpen(false)}
+                className="p-1.5 hover:bg-white/20 rounded-full transition-colors"
               >
-                {isActuallyWaiting ? "WAITING" : "ON_MY_WAY"}
-              </span>
-              <span className="text-white group-hover:translate-x-1 transition-transform">
-                →
-              </span>
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
 
-          <div className="p-4 space-y-3 max-h-[52vh] overflow-y-auto text-left">
-            {!tracking && loading ? (
-              <div className="p-4 text-center">
-                <Loading fullScreen={false} size={60} />
-                <p className="text-sm font-bold text-orange-700 mt-2">
-                  Loading tracking...
-                </p>
-              </div>
-            ) : !tracking ? (
-              <div className="p-4 text-center">
-                <p className="text-sm font-bold text-orange-700">
-                  Waiting for order information...
-                </p>
-                <button
-                  type="button"
-                  onClick={handleTrackNextOngoingOrder}
-                  disabled={loading || ongoingOrderIds.length === 0}
-                  className="mt-3 px-3 py-2 rounded-lg bg-[#A03F00] text-white text-xs font-black disabled:bg-gray-300"
-                >
-                  {loading ? "Checking..." : "Track next ongoing order"}
-                </button>
-              </div>
-            ) : (
-              <>
-                {isCompletedUnpaid && (
-                  <div className="rounded-xl bg-orange-100 border border-orange-200 p-3 mb-1">
-                    <p className="text-xs font-black text-orange-800 uppercase tracking-tight mb-1">
-                      Action Required
-                    </p>
-                    <p className="text-[11px] text-orange-700 font-bold leading-tight">
-                      Freelancer has marked the work as complete. Please release
-                      the payment.
-                    </p>
-                    <button
-                      onClick={handlePay}
-                      disabled={loading}
-                      className="w-full mt-2 py-2 rounded-lg bg-[#FF914D] text-white text-xs font-black shadow-md hover:bg-[#e67e3d] transition-all disabled:bg-gray-300"
-                    >
-                      {loading
-                        ? "Processing..."
-                        : "Pay Now ฿ " + tracking.price.toFixed(2)}
-                    </button>
-                  </div>
-                )}
-                <div className="rounded-lg border border-orange-200 bg-white p-3 text-xs space-y-1">
-                  <p>
-                    <span className="text-gray-500">Service:</span>{" "}
-                    <span className="font-bold">{tracking.productName}</span>
-                  </p>
-                  <p>
-                    <span className="text-gray-500">Freelancer:</span>{" "}
-                    <span className="font-bold">{tracking.freelanceName}</span>
-                  </p>
-                  <p>
-                    <span className="text-gray-500">Status:</span>{" "}
-                    <span className="font-bold text-orange-700 uppercase">
-                      {statusDisplay}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-gray-500">Price:</span>{" "}
-                    <span className="font-bold">
-                      ฿ {tracking.price.toFixed(2)}
-                    </span>
-                  </p>
-                </div>
-                <div className="rounded-lg border border-orange-200 bg-white p-3 text-xs space-y-2">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-wider text-orange-700/70">
-                      Pickup
-                    </p>
-                    <p className="font-semibold text-[#4A2600]">
-                      {tracking.pickupAddress?.name || "Pickup point"}
-                    </p>
-                    <p className="text-[#4A2600]/75 line-clamp-1">
-                      {tracking.pickupAddress?.address_detail ||
-                        "No pickup address"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-wider text-orange-700/70">
-                      Destination
-                    </p>
-                    <p className="font-semibold text-[#4A2600]">
-                      {tracking.destinationAddress?.name || "Destination"}
-                    </p>
-                    <p className="text-[#4A2600]/75 line-clamp-1">
-                      {tracking.destinationAddress?.address_detail ||
-                        "No destination address"}
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className="rounded-lg border border-orange-200 bg-white p-3 text-xs space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] font-black uppercase tracking-wider text-orange-700/70">
-                  Ongoing Orders
-                </p>
-                <span className="px-2 py-0.5 rounded-full bg-orange-100 text-[10px] font-black text-[#A03F00]">
-                  {ongoingOrderIds.length}
-                </span>
-              </div>
-              <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
-                {ongoingOrderIds.length === 0 ? (
-                  <p className="text-gray-500 italic">
-                    No ongoing orders right now.
-                  </p>
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-[#FFF9F5]">
+            {viewMode === "list" ? (
+              <div className="space-y-3">
+                {ongoingOrders.length === 0 ? (
+                  <div className="py-10 text-center text-gray-500 italic text-sm">No ongoing orders</div>
                 ) : (
-                  ongoingOrderIds.map((id) => (
+                  ongoingOrders.map((order) => (
                     <button
-                      key={id}
-                      type="button"
+                      key={order.id}
                       onClick={() => {
-                        setActiveOrderId(id);
-                        loadTracking(id);
+                        setActiveOrderId(order.id);
+                        loadTracking(order.id);
+                        setViewMode("detail");
                       }}
-                      className={`w-full text-left px-2 py-1.5 rounded-md border text-[11px] font-semibold transition-colors ${id === activeOrderId ? "bg-orange-100 border-orange-300 text-[#4A2600]" : "bg-white border-orange-100 text-gray-700 hover:bg-orange-50"}`}
+                      className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between gap-3 group ${
+                        order.id === activeOrderId 
+                          ? "bg-orange-50 border-orange-200 shadow-sm" 
+                          : "bg-white border-orange-100 hover:border-orange-200 hover:shadow-sm"
+                      }`}
                     >
-                      {id}
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-0.5">#{order.id.slice(0, 8)}</p>
+                        <p className="text-sm font-black text-[#4A2600] truncate">{order.name}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase ${getStatusColor(order.status)}`}>
+                            {order.status.replaceAll("_", " ")}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className={`w-4 h-4 text-orange-300 group-hover:translate-x-1 transition-transform ${order.id === activeOrderId ? "text-orange-500" : ""}`} />
                     </button>
                   ))
                 )}
               </div>
-            </div>
+            ) : (
+              <>
+                {!tracking && loading ? (
+                  <div className="py-12 flex flex-col items-center justify-center">
+                    <Loading fullScreen={false} size={50} />
+                    <p className="text-sm font-bold text-orange-700 mt-4 animate-pulse">Fetching details...</p>
+                  </div>
+                ) : !tracking ? (
+                  <div className="py-8 text-center space-y-4">
+                    <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
+                      <Package className="w-8 h-8 text-orange-400" />
+                    </div>
+                    <p className="text-sm font-bold text-[#4A2600]">No active order selected</p>
+                    <button
+                      type="button"
+                      onClick={handleTrackNextOngoingOrder}
+                      className="px-4 py-2 rounded-xl bg-[#A03F00] text-white text-xs font-black"
+                    >
+                      Auto-Track Ongoing
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative pt-2 pb-1">
+                      <div className="flex justify-between relative z-10">
+                        {STATUS_STEPS.map((step, idx) => {
+                          const Icon = step.icon;
+                          const isActive = idx <= activeStep;
+                          const isCurrent = idx === activeStep;
+                          return (
+                            <div key={step.key} className="flex flex-col items-center gap-1.5">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
+                                isActive 
+                                  ? "bg-[#A03F00] border-[#A03F00] text-white scale-110 shadow-md" 
+                                  : "bg-white border-orange-100 text-orange-200"
+                              } ${isCurrent ? "ring-4 ring-orange-100" : ""}`}>
+                                <Icon className="w-4 h-4" />
+                              </div>
+                              <p className={`text-[9px] font-black uppercase tracking-tight ${isActive ? "text-[#A03F00]" : "text-gray-400"}`}>
+                                {step.label}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="absolute top-6 left-[10%] right-[10%] h-0.5 bg-orange-50 -z-0">
+                        <div 
+                          className="h-full bg-[#A03F00] transition-all duration-700 ease-out shadow-sm"
+                          style={{ width: `${(activeStep / (STATUS_STEPS.length - 1)) * 100}%` }}
+                        />
+                      </div>
+                    </div>
 
-            <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {isCompletedUnpaid && (
+                      <div className="rounded-2xl bg-[#FFE2CF] border border-orange-200 p-4 shadow-sm animate-in zoom-in-95 duration-300">
+                        <p className="text-[11px] font-black text-orange-900 uppercase tracking-tight">Payment Released Needed</p>
+                        <p className="text-[10px] text-orange-800 font-bold mt-0.5">Freelancer finished the job. Please pay to finalize.</p>
+                        <button
+                          onClick={handlePay}
+                          className="w-full mt-3 py-2.5 rounded-xl bg-[#A03F00] text-white text-xs font-black flex items-center justify-center gap-2"
+                        >
+                          Pay Now ฿ {tracking.price.toFixed(2)}
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="bg-white rounded-2xl border border-orange-100 p-4 shadow-sm space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1 min-w-0">
+                          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Service</p>
+                          <p className="text-xs font-black text-[#4A2600] truncate">{tracking.productName}</p>
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Freelancer</p>
+                          <p className="text-xs font-black text-[#4A2600] truncate">{tracking.freelanceName}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 pt-3 border-t border-orange-50">
+                        <div className="flex gap-3">
+                          <div className="mt-1">
+                            <div className="w-2 h-2 rounded-full bg-green-500" />
+                            <div className="w-0.5 h-6 bg-orange-50 mx-auto my-1" />
+                            <div className="w-2 h-2 rounded-full bg-red-500" />
+                          </div>
+                          <div className="flex-1 space-y-3 min-w-0">
+                            <div className="min-w-0">
+                              <p className="text-[9px] font-black text-orange-700/60 uppercase">Pickup</p>
+                              <p className="text-[11px] font-bold text-[#4A2600] truncate">{tracking.pickupAddress?.name || "Market/Shop"}</p>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[9px] font-black text-orange-700/60 uppercase">Delivery</p>
+                              <p className="text-[11px] font-bold text-[#4A2600] truncate">{tracking.destinationAddress?.name || "My Location"}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Quick Actions */}
+            <div className="flex gap-2">
               <button
                 type="button"
                 onClick={handleManualRefresh}
                 disabled={loading}
-                className="flex-1 px-3 py-2 rounded-lg bg-[#A03F00] text-white text-xs font-black disabled:bg-gray-300 hover:bg-[#8a3600] transition-colors"
+                className="flex-1 flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl bg-white border border-orange-100 hover:bg-orange-50 transition-colors group"
               >
-                {loading ? "Refreshing..." : "Refresh"}
+                <RefreshCw className={`w-5 h-5 text-orange-600 ${loading ? 'animate-spin' : 'group-hover:rotate-45'} transition-all`} />
+                <span className="text-[9px] font-black text-[#4A2600] uppercase">Refresh</span>
               </button>
               <button
                 type="button"
                 onClick={handleOpenChat}
                 disabled={loading || !activeOrderId}
-                className="flex-1 px-3 py-2 rounded-lg bg-blue-100 text-blue-700 text-xs font-black disabled:bg-gray-100 disabled:text-gray-400 hover:bg-blue-200 transition-colors"
+                className="flex-1 flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl bg-white border border-orange-100 hover:bg-orange-50 transition-colors group"
               >
-                {loading ? "Opening..." : "Open Chat"}
+                <MessageCircle className="w-5 h-5 text-blue-500 group-hover:scale-110 transition-transform" />
+                <span className="text-[9px] font-black text-[#4A2600] uppercase">Chat</span>
               </button>
+              <Link
+                to="/order-history"
+                className="flex-1 flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl bg-white border border-orange-100 hover:bg-orange-50 transition-colors group"
+              >
+                <History className="w-5 h-5 text-[#A03F00] group-hover:-rotate-12 transition-transform" />
+                <span className="text-[9px] font-black text-[#4A2600] uppercase">History</span>
+              </Link>
             </div>
+
+            {/* Bottom mini-selector footer (only in detail view) */}
+            {viewMode === "detail" && ongoingOrders.length > 1 && (
+              <div className="space-y-2 pt-2 border-t border-orange-50/50">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Other ongoing jobs ({ongoingOrders.length - 1})</p>
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                  {ongoingOrders.filter(o => o.id !== activeOrderId).map((order) => (
+                    <button
+                      key={order.id}
+                      onClick={() => {
+                        setActiveOrderId(order.id);
+                        loadTracking(order.id);
+                      }}
+                      className="shrink-0 px-4 py-2.5 rounded-xl border border-orange-100 bg-white text-[10px] font-black text-[#4A2600] hover:border-orange-200 transition-all max-w-[140px] truncate"
+                    >
+                      {order.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
+      {/* Toggle Button */}
       <div className="flex justify-end w-full pointer-events-auto">
         <button
           type="button"
           onClick={() => setOpen((prev) => !prev)}
-          className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#D35400] hover:bg-[#b34700] text-white shadow-2xl flex items-center justify-center transition-transform active:scale-95"
+          className={`w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center transition-all shadow-2xl relative ${
+            open ? "bg-white text-orange-600 border-2 border-orange-200" : "bg-[#D35400] text-white hover:bg-[#b34700]"
+          }`}
         >
-          {open ? (
-            <X className="w-7 h-7 md:w-8 md:h-8" />
-          ) : (
-            <Truck className="w-7 h-7 md:w-8 md:h-8" />
+          {open ? <X className="w-7 h-7" /> : <Truck className="w-8 h-8" />}
+          {!open && ongoingOrders.length > 0 && (
+            <span className="absolute -top-1 -right-1 w-6 h-6 bg-blue-600 text-white text-[10px] font-black flex items-center justify-center rounded-full border-2 border-white animate-bounce">
+              {ongoingOrders.length}
+            </span>
           )}
         </button>
       </div>
