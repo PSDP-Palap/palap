@@ -77,6 +77,7 @@ const Navbar = () => {
               <DropdownMenu
                 open={isDropdownOpen}
                 onOpenChange={setIsDropdownOpen}
+                modal={false}
               >
                 <DropdownMenuTrigger asChild>
                   <li className="bg-[#F8CBB1] px-4 py-1.5 rounded-full text-sm text-gray-800 font-bold cursor-pointer hover:bg-[#F5BCA0] transition-colors flex items-center gap-2">
