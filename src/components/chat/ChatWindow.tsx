@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Send } from "lucide-react";
+import { Send, Image as ImageIcon, ArrowLeft, MoreVertical, ShieldCheck, Clock, MessageCircle } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 import type { RefObject } from "react";
 
 import Loading from "@/components/shared/Loading";
@@ -101,15 +102,17 @@ export function ChatWindow({
 }: ChatWindowProps) {
   const { profile, session } = useUserStore();
   const currentUserId = profile?.id || session?.user?.id || null;
+
   const formatMessageText = (
     rawMessage: string | null | undefined,
     type?: string
   ) => {
     const message = String(rawMessage || "");
     const upperType = String(type || "").toUpperCase();
-    if (upperType.startsWith("SYSTEM_")) {
+    if (upperType.startsWith("SYSTEM_") || upperType === "SYSTEM") {
       return (
         message
+          .replace(/\[SYSTEM_[A-Z_]+\]/g, "")
           .replace(/\b(SERVICE|PRICE|CUSTOMER|FREELANCER|ORDER):[^\s]+/gi, "")
           .replace(/\s{2,}/g, " ")
           .trim() || "System update"
@@ -118,322 +121,212 @@ export function ChatWindow({
     return message;
   };
 
+  const isSystemMessage = (type?: string) => {
+    const upperType = String(type || "").toUpperCase();
+    return upperType.startsWith("SYSTEM");
+  };
+
   return (
-    <div className="min-h-screen bg-[#F9E6D8] pt-24 pb-6 md:pb-8">
-      <main className="max-w-6xl mx-auto px-4">
-        <div className="bg-white rounded-2xl border border-orange-100 shadow-lg p-3 md:p-4 h-[calc(100vh-7.5rem)] md:h-[calc(100vh-8rem)]">
-          <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-3 h-full min-h-0">
-            {/* Sidebar */}
-            <aside className="hidden md:flex bg-[#F7D9C4] rounded-xl p-3 border border-orange-100 flex-col min-h-0">
-              <div className="bg-white rounded-lg px-3 py-2 border border-orange-100 mb-3">
+    <div className="min-h-screen bg-[#FDFCFB] pt-20 pb-0 md:pb-4">
+      <main className="max-w-7xl mx-auto px-0 md:px-4 h-[calc(100vh-5rem)]">
+        <div className="bg-white md:rounded-3xl shadow-2xl shadow-orange-900/5 border border-orange-100 flex overflow-hidden h-full">
+          
+          {/* Desktop Sidebar */}
+          <aside className="hidden lg:flex w-80 flex-col border-r border-orange-50 bg-[#FDFCFB]">
+            <div className="p-6">
+              <h2 className="text-xl font-black text-[#4A2600] mb-4">Messages</h2>
+              <div className="relative">
                 <input
                   type="text"
-                  placeholder="Search Name"
+                  placeholder="Search chats..."
                   value={chatRoomSearch}
-                  onChange={(event) => setChatRoomSearch(event.target.value)}
-                  className="w-full text-sm outline-none bg-transparent"
+                  onChange={(e) => setChatRoomSearch(e.target.value)}
+                  className="w-full bg-orange-50/50 border border-orange-100 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-orange-500/20 transition-all outline-none"
                 />
               </div>
+            </div>
 
-              <div className="space-y-2 overflow-y-auto min-h-0">
-                {loadingChatRoomList && (
-                  <Loading fullScreen={false} size={60} />
-                )}
-
-                {!loadingChatRoomList && filteredChatRoomList.length === 0 && (
-                  <p className="text-xs text-gray-500 px-1">
-                    No chat room found.
-                  </p>
-                )}
-
-                {filteredChatRoomList.map((room) => {
-                  const isActiveRoom =
-                    String(room.roomId) === String(roomId || hashRoomId || "");
-
-                  const date = new Date(room.lastAt);
-                  const timeStr = !isNaN(date.getTime())
-                    ? date.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: false
-                      })
-                    : "";
-
+            <div className="flex-1 overflow-y-auto px-3 space-y-1">
+              {loadingChatRoomList ? (
+                <div className="py-10 flex justify-center"><Loading fullScreen={false} size={40} /></div>
+              ) : filteredChatRoomList.length === 0 ? (
+                <p className="text-center text-xs text-gray-400 py-10">No conversations found</p>
+              ) : (
+                filteredChatRoomList.map((room) => {
+                  const isActive = String(room.roomId) === String(roomId || hashRoomId || "");
                   return (
                     <button
                       key={room.roomId}
-                      type="button"
-                      onClick={async () => {
-                        setRoomId(room.roomId);
-                        if (loadRoomParticipants)
-                          await loadRoomParticipants(room.roomId);
-                      }}
-                      className={`w-full text-left rounded-xl p-3 border transition-all ${isActiveRoom ? "bg-orange-50 border-orange-300 ring-1 ring-orange-200" : "bg-white border-gray-100 hover:border-orange-200 hover:bg-orange-50/30"}`}
+                      onClick={() => setRoomId(room.roomId)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all ${isActive ? "bg-orange-600 text-white shadow-lg shadow-orange-900/20" : "hover:bg-orange-50 text-[#4A2600]"}`}
                     >
-                      <div className="flex items-start gap-3 relative">
-                        {/* Circle Avatar on Left */}
-                        <div className="w-12 h-12 rounded-full bg-orange-100 border-2 border-white shadow-sm overflow-hidden shrink-0 flex items-center justify-center text-orange-600 font-black">
-                          {room.partnerAvatarUrl ? (
-                            <img
-                              src={room.partnerAvatarUrl}
-                              alt={room.partnerName}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            (room.partnerName || "U").charAt(0).toUpperCase()
-                          )}
+                      <div className="w-12 h-12 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-orange-100">
+                        {room.partnerAvatarUrl ? (
+                          <img src={room.partnerAvatarUrl} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center font-black">{room.partnerName.charAt(0)}</div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="flex justify-between items-baseline">
+                          <p className="font-black text-sm truncate">{room.partnerName}</p>
+                          <span className={`text-[9px] font-bold ${isActive ? "text-white/70" : "text-gray-400"}`}>
+                            {new Date(room.lastAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
                         </div>
-
-                        {/* Name and Last Message in Center */}
-                        <div className="flex-1 min-w-0 pt-0.5">
-                          <div className="flex justify-between items-start gap-2">
-                            <p
-                              className={`font-bold text-sm truncate ${isActiveRoom ? "text-[#A03F00]" : "text-[#4A2600]"}`}
-                            >
-                              {room.partnerName}
-                            </p>
-                            {/* Time on Top-Right */}
-                            <span className="text-[10px] text-gray-400 font-medium shrink-0 pt-0.5">
-                              {timeStr}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-gray-500 truncate mt-1 leading-tight">
-                            {room.lastMessage || "No messages yet"}
-                          </p>
-                        </div>
+                        <p className={`text-xs truncate ${isActive ? "text-white/80" : "text-gray-500"}`}>{room.lastMessage}</p>
                       </div>
                     </button>
                   );
-                })}
-              </div>
-            </aside>
+                })
+              )}
+            </div>
+          </aside>
 
-            {/* Chat Area */}
-            <section className="bg-[#F7D9C4] rounded-xl p-2 md:p-3 border border-orange-100 flex flex-col min-h-0">
-              <header className="bg-[#F2A779] rounded-xl p-3 md:p-4 border border-orange-200 mb-2 md:mb-3 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-full bg-orange-100 border border-orange-200 overflow-hidden flex items-center justify-center text-sm font-black text-[#4A2600]">
+          {/* Chat Main Area */}
+          <div className="flex-1 flex flex-col min-w-0 bg-white">
+            {/* Header */}
+            <header className="px-6 py-4 border-b border-orange-50 flex items-center justify-between bg-white z-10 shrink-0">
+              <div className="flex items-center gap-4 min-w-0">
+                <button onClick={closeChat} className="lg:hidden p-2 -ml-2 text-[#4A2600]"><ArrowLeft className="w-6 h-6" /></button>
+                <div className="relative">
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-full overflow-hidden border-2 border-orange-100 bg-orange-50">
                     {chatCounterpartAvatar ? (
-                      <img
-                        src={chatCounterpartAvatar || ""}
-                        alt={chatCounterpartName}
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={chatCounterpartAvatar} className="w-full h-full object-cover" />
                     ) : (
-                      (chatCounterpartName || "U").charAt(0).toUpperCase()
+                      <div className="w-full h-full flex items-center justify-center font-black text-[#A03F00]">{chatCounterpartName.charAt(0)}</div>
                     )}
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-black text-[#4A2600] truncate">
-                      {chatCounterpartName}
-                    </p>
-                    <p className="text-sm text-[#4A2600]/80 mt-1 truncate">
-                      Order: {serviceName}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeChat}
-                    className="ml-auto inline-flex px-4 py-2 rounded-xl bg-white/90 text-[#D35400] text-xs font-black shadow-sm hover:bg-white transition-all active:scale-95"
-                  >
-                    Back
-                  </button>
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
                 </div>
-              </header>
-
-              {workflowEnabled && (
-                <div className="mb-2 md:mb-3 rounded-xl border border-orange-200 bg-white px-3 py-2.5 shrink-0">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-black uppercase tracking-wide text-orange-700/80">
-                        Work Approval Flow
-                      </p>
-                      <p className="text-xs text-gray-600 mt-0.5 wrap-break-word">
-                        {workflowStatusText ||
-                          "Track work progress, review, and release payment."}
-                      </p>
-                      {workflowAgreedPrice !== null && (
-                        <p className="text-xs text-[#4A2600] font-bold mt-1">
-                          Agreed price: ฿{" "}
-                          {Number(workflowAgreedPrice || 0).toFixed(2)}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {canPayAndStartWork && onPayAndStartWork && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onPayAndStartWork();
-                          }}
-                          disabled={workflowBusyAction !== null}
-                          className="px-3 py-1.5 rounded-md bg-[#A03F00] text-white text-xs font-black disabled:bg-gray-300"
-                        >
-                          {workflowBusyAction === "pay"
-                            ? "Processing..."
-                            : "Pay & Start Work"}
-                        </button>
-                      )}
-
-                      {canSubmitWork && onSubmitWork && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onSubmitWork();
-                          }}
-                          disabled={workflowBusyAction !== null}
-                          className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs font-black disabled:bg-gray-300"
-                        >
-                          {workflowBusyAction === "submit"
-                            ? "Submitting..."
-                            : "Submit Work"}
-                        </button>
-                      )}
-
-                      {canApproveWork && onApproveWork && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onApproveWork();
-                          }}
-                          disabled={workflowBusyAction !== null}
-                          className="px-3 py-1.5 rounded-md bg-green-600 text-white text-xs font-black disabled:bg-gray-300"
-                        >
-                          {workflowBusyAction === "approve"
-                            ? "Approving..."
-                            : "Approve Work"}
-                        </button>
-                      )}
-
-                      {canDeclineWork && onDeclineWork && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onDeclineWork();
-                          }}
-                          disabled={workflowBusyAction !== null}
-                          className="px-3 py-1.5 rounded-md bg-red-600 text-white text-xs font-black disabled:bg-gray-300"
-                        >
-                          {workflowBusyAction === "decline"
-                            ? "Sending..."
-                            : "Request Revision"}
-                        </button>
-                      )}
-
-                      {canPayForCompletedWork && onPayForCompletedWork && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onPayForCompletedWork();
-                          }}
-                          disabled={workflowBusyAction !== null}
-                          className="px-3 py-1.5 rounded-md bg-[#FF914D] text-white text-xs font-black shadow-md hover:bg-[#e67e3d] transition-all disabled:bg-gray-300"
-                        >
-                          {workflowBusyAction === "complete_pay"
-                            ? "Processing..."
-                            : "Pay Now"}
-                        </button>
-                      )}
-                    </div>
+                <div className="min-w-0">
+                  <h3 className="font-black text-[#4A2600] truncate">{chatCounterpartName}</h3>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black text-orange-600 uppercase tracking-widest">{serviceName}</span>
                   </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="p-2 text-gray-400 hover:text-orange-600 transition-colors"><ShieldCheck className="w-5 h-5" /></button>
+                <button className="p-2 text-gray-400 hover:text-orange-600 transition-colors"><MoreVertical className="w-5 h-5" /></button>
+              </div>
+            </header>
+
+            {/* Workflow Bar */}
+            {workflowEnabled && (
+              <div className="px-6 py-3 bg-orange-50/50 border-b border-orange-100 flex flex-col md:flex-row md:items-center justify-between gap-3 animate-in slide-in-from-top duration-300">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-white shadow-sm text-orange-600"><Clock className="w-4 h-4" /></div>
+                  <div>
+                    <p className="text-[10px] font-black text-orange-800 uppercase tracking-[0.15em]">{workflowStatusText || "Order Status"}</p>
+                    {workflowAgreedPrice !== null && (
+                      <p className="text-xs font-bold text-[#4A2600]">Total: ฿{Number(workflowAgreedPrice).toLocaleString()}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {canPayAndStartWork && onPayAndStartWork && (
+                    <button onClick={onPayAndStartWork} disabled={workflowBusyAction !== null} className="px-4 py-2 rounded-xl bg-[#A03F00] text-white text-xs font-black shadow-lg shadow-orange-900/20 hover:bg-[#8a3600] transition-all disabled:opacity-50">
+                      {workflowBusyAction === "pay" ? "Processing..." : "Pay & Start"}
+                    </button>
+                  )}
+                  {canSubmitWork && onSubmitWork && (
+                    <button onClick={onSubmitWork} disabled={workflowBusyAction !== null} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black shadow-lg shadow-blue-900/20 hover:bg-blue-700 transition-all disabled:opacity-50">
+                      {workflowBusyAction === "submit" ? "Submitting..." : "Submit Work"}
+                    </button>
+                  )}
+                  {canApproveWork && onApproveWork && (
+                    <button onClick={onApproveWork} disabled={workflowBusyAction !== null} className="px-4 py-2 rounded-xl bg-green-600 text-white text-xs font-black shadow-lg shadow-green-900/20 hover:bg-green-700 transition-all disabled:opacity-50">
+                      {workflowBusyAction === "approve" ? "Approving..." : "Approve Work"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Messages Area */}
+            <div 
+              ref={messagesContainerRef}
+              className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#FDFCFB]/50"
+            >
+              {chatLoading && <div className="py-10 flex justify-center"><Loading fullScreen={false} size={60} /></div>}
+              {!chatLoading && messages.length === 0 && (
+                <div className="py-20 text-center space-y-4">
+                  <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mx-auto">
+                    <MessageCircle className="w-10 h-10 text-orange-200" />
+                  </div>
+                  <p className="text-gray-400 text-sm font-bold">No messages yet. Say hello!</p>
                 </div>
               )}
 
-              <div
-                ref={messagesContainerRef}
-                className="bg-[#F3F4F6] rounded-xl border border-orange-100 flex-1 min-h-0 p-3 md:p-4 overflow-y-auto space-y-3"
-              >
-                {chatLoading && <Loading fullScreen={false} size={80} />}
-                {!chatLoading && messages.length === 0 && (
-                  <p className="text-sm text-gray-500">
-                    No message yet. Start chatting with the{" "}
-                    {isCurrentUserFreelancerInRoom ? "customer" : "freelancer"}.
-                  </p>
-                )}
-
-                {messages.map((message) => {
-                  const isMine =
-                    String(message.sender_id) === String(currentUserId);
-                  const isImage = message.message_type === "IMAGE";
+              {messages.map((msg, idx) => {
+                const isMine = String(msg.sender_id) === String(currentUserId);
+                const isSystem = isSystemMessage(msg.message_type);
+                const isImage = msg.message_type === "IMAGE";
+                
+                if (isSystem) {
                   return (
-                    <div
-                      key={String(message.id)}
-                      className={`flex ${isMine ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[50%] rounded-2xl px-4 py-2 text-sm border shadow-sm wrap-break-word overflow-hidden ${isMine ? "bg-[#F2A779] border-orange-300 text-[#4A2600]" : "bg-white border-orange-200 text-[#4A2600]"}`}
-                      >
-                        {isImage ? (
-                          <img
-                            src={message.content}
-                            alt="Chat image"
-                            className="max-h-64 w-auto rounded-lg border border-orange-200 object-contain"
-                          />
-                        ) : (
-                          <p className="whitespace-pre-wrap break-all">
-                            {formatMessageText(
-                              message.content,
-                              message.message_type
-                            )}
-                          </p>
-                        )}
-                        <p className="text-[10px] mt-1 opacity-70">
-                          {new Date(message.created_at).toLocaleString()}
+                    <div key={String(msg.id)} className="flex justify-center py-2">
+                      <div className="bg-orange-100/50 border border-orange-200/50 px-4 py-1.5 rounded-full">
+                        <p className="text-[10px] font-black text-orange-800 uppercase tracking-widest text-center">
+                          {formatMessageText(msg.content, msg.message_type)}
                         </p>
                       </div>
                     </div>
                   );
-                })}
-              </div>
+                }
 
-              {chatError && (
-                <p className="text-red-600 text-sm font-semibold mt-2">
-                  {chatError}
-                </p>
-              )}
+                return (
+                  <div key={String(msg.id)} className={`flex ${isMine ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                    <div className={`flex flex-col max-w-[75%] md:max-w-[60%] ${isMine ? "items-end" : "items-start"}`}>
+                      <div className={`px-4 py-3 rounded-3xl shadow-sm ${
+                        isMine 
+                          ? "bg-orange-600 text-white rounded-tr-none" 
+                          : "bg-white border border-orange-50 text-[#4A2600] rounded-tl-none"
+                      }`}>
+                        {isImage ? (
+                          <img src={msg.content} className="max-h-80 w-full object-contain rounded-2xl border border-black/5" />
+                        ) : (
+                          <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                        )}
+                      </div>
+                      <span className="text-[9px] font-bold text-gray-400 mt-1 px-2">
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
-              <div className="mt-2 md:mt-3 flex items-center gap-2 bg-white rounded-xl border border-orange-100 px-3 py-2 shrink-0">
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={onImageSelected}
-                  className="hidden"
-                />
-                <button
-                  type="button"
+            {/* Input Area */}
+            <div className="px-6 py-4 bg-white border-t border-orange-50 shrink-0">
+              {chatError && <p className="text-xs font-black text-red-500 mb-2">{chatError}</p>}
+              <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-2xl border border-gray-100 focus-within:ring-2 focus-within:ring-orange-500/20 transition-all">
+                <input ref={imageInputRef} type="file" accept="image/*" onChange={onImageSelected} className="hidden" />
+                <button 
                   onClick={onPickImage}
                   disabled={sending || sendingImage}
-                  className={`px-3 py-2 rounded-lg text-sm font-black ${sending || sendingImage ? "bg-gray-100 text-gray-400" : "bg-orange-100 text-[#A03F00] hover:bg-orange-200"}`}
+                  className="p-3 rounded-xl bg-white border border-gray-200 text-gray-400 hover:text-orange-600 hover:border-orange-200 transition-all shadow-sm"
                 >
-                  {sendingImage ? "Uploading..." : "Image"}
+                  <ImageIcon className="w-5 h-5" />
                 </button>
                 <input
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  placeholder="Type your message"
-                  className="flex-1 text-sm outline-none bg-transparent"
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                  placeholder="Type your message..."
+                  className="flex-1 bg-transparent text-sm font-bold outline-none px-2"
                 />
                 <button
-                  type="button"
-                  onClick={() => {
-                    sendMessage();
-                  }}
+                  onClick={() => sendMessage()}
                   disabled={sending || sendingImage || !chatInput.trim()}
-                  className={`p-2 rounded-lg text-sm font-black transition-transform active:scale-95 ${sending || sendingImage || !chatInput.trim() ? "bg-gray-100 text-gray-400" : "bg-[#D35400] text-white hover:bg-[#b34700]"}`}
-                  aria-label="Send message"
+                  className="p-3 rounded-xl bg-[#A03F00] text-white shadow-lg shadow-orange-900/20 hover:bg-[#8a3600] transition-all transform active:scale-90 disabled:opacity-50 disabled:grayscale"
                 >
                   <Send className="w-5 h-5" />
                 </button>
               </div>
-            </section>
+            </div>
           </div>
         </div>
       </main>

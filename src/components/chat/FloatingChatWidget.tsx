@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useRouter, useRouterState } from "@tanstack/react-router";
-import { MessageCircle, Search, X } from "lucide-react";
+import { MessageCircle, Search, X, ChevronRight, Inbox } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Loading from "@/components/shared/Loading";
@@ -167,7 +167,6 @@ const FloatingChatWidget = () => {
         if (fetchUnlockTimer) {
           window.clearTimeout(fetchUnlockTimer);
         }
-        // Safety unlock: if any async branch hangs, allow next poll to recover.
         fetchUnlockTimer = window.setTimeout(() => {
           isFetchingRef.current = false;
         }, 15000);
@@ -186,16 +185,8 @@ const FloatingChatWidget = () => {
             filter: `customer_id.eq.${userId},freelancer_id.eq.${userId}`
           },
           {
-            select: "id, order_id, customer_id, freelance_id, last_message_at",
-            filter: `customer_id.eq.${userId},freelance_id.eq.${userId}`
-          },
-          {
             select: "id, order_id, user_id, freelancer_id, last_message_at",
             filter: `user_id.eq.${userId},freelancer_id.eq.${userId}`
-          },
-          {
-            select: "id, order_id, user_id, freelance_id, last_message_at",
-            filter: `user_id.eq.${userId},freelance_id.eq.${userId}`
           }
         ];
 
@@ -289,25 +280,7 @@ const FloatingChatWidget = () => {
                 12000
               );
 
-              if (profileResult.error) {
-                const fallbackPartnerIds = candidatePartnerIds.filter((id) =>
-                  isUuidLike(String(id || ""))
-                );
-
-                if (fallbackPartnerIds.length > 0) {
-                  const fallbackProfileResult = await withTimeout(
-                    supabase
-                      .from("profiles")
-                      .select("*")
-                      .in("id", fallbackPartnerIds),
-                    12000
-                  );
-
-                  candidateProfileRows = (
-                    (fallbackProfileResult.data as any[]) ?? []
-                  ).filter(Boolean);
-                }
-              } else {
+              if (!profileResult.error) {
                 candidateProfileRows = (
                   (profileResult.data as any[]) ?? []
                 ).filter(Boolean);
@@ -321,19 +294,6 @@ const FloatingChatWidget = () => {
               resolvedProfileRows = candidateProfileRows;
               roomError = null;
             }
-
-            const targetScore = new Set(
-              candidatePartnerIds.map((id) => String(id))
-            ).size;
-            if (targetScore > 0 && score >= targetScore) {
-              break;
-            }
-
-            continue;
-          }
-
-          roomError = result.error;
-          if (!isColumnMissingError(result.error)) {
             break;
           }
         }
@@ -347,7 +307,6 @@ const FloatingChatWidget = () => {
           return;
         }
 
-        // Keep rows even if room ids are non-UUID in some environments.
         const roomRows = (rooms as any[]).filter(
           (r) => String(r.id || "").length > 0
         );
@@ -414,75 +373,8 @@ const FloatingChatWidget = () => {
           }
         });
 
-        const fallbackPartnerIds = new Set<string>();
-        roomRows.forEach((room: any) => {
-          const orderRow = orderMap.get(String(room?.order_id || ""));
-          const customerId =
-            resolveCustomerId(room) || resolveOrderCustomerId(orderRow);
-          const freelancerId =
-            resolveFreelancerId(room) || resolveOrderFreelancerId(orderRow);
-          const senderFallbackId = latestNonSelfSenderByRoom.get(
-            String(room.id)
-          );
-
-          [customerId, freelancerId, senderFallbackId].forEach((value) => {
-            const id = String(value || "");
-            if (!id || id === String(userId)) return;
-            fallbackPartnerIds.add(id);
-          });
-        });
-
-        let profileRows = resolvedProfileRows;
-        const missingPartnerIds = Array.from(fallbackPartnerIds).filter(
-          (id) =>
-            !profileRows.some(
-              (profile: any) => String(profile?.id || "") === id
-            )
-        );
-
-        if (missingPartnerIds.length > 0) {
-          const extraProfileResult = await withTimeout(
-            supabase.from("profiles").select("*").in("id", missingPartnerIds),
-            12000
-          );
-
-          if (extraProfileResult.error) {
-            const uuidOnlyPartnerIds = missingPartnerIds.filter((id) =>
-              isUuidLike(String(id || ""))
-            );
-
-            if (uuidOnlyPartnerIds.length > 0) {
-              const uuidProfileResult = await withTimeout(
-                supabase
-                  .from("profiles")
-                  .select("*")
-                  .in("id", uuidOnlyPartnerIds),
-                12000
-              );
-
-              if (!uuidProfileResult.error) {
-                profileRows = [
-                  ...profileRows,
-                  ...(((uuidProfileResult.data as any[]) ?? []).filter(
-                    Boolean
-                  ) as any[])
-                ];
-              }
-            }
-          } else {
-            profileRows = [
-              ...profileRows,
-              ...(((extraProfileResult.data as any[]) ?? []).filter(
-                Boolean
-              ) as any[])
-            ];
-          }
-        }
-
-        if (!active) return;
-
         const profileMap = new Map(
-          (profileRows ?? []).map((item: any) => [
+          (resolvedProfileRows ?? []).map((item: any) => [
             String(item.id),
             {
               name: item.full_name || item.email || "User",
@@ -507,7 +399,6 @@ const FloatingChatWidget = () => {
           }
           const partner = profileMap.get(partnerId);
           const customer = profileMap.get(customerId);
-          const freelancer = profileMap.get(freelancerId);
           const latest = latestMessageByRoom.get(roomId);
 
           return {
@@ -520,12 +411,12 @@ const FloatingChatWidget = () => {
               (isCurrentUserCustomer ? "Freelancer" : "Customer"),
             partnerAvatarUrl: partner?.avatarUrl || null,
             customerName: customer?.name || "Customer",
-            customerAvatarUrl: customer?.avatarUrl || null,
-            freelancerName: freelancer?.name || "Freelancer",
-            freelancerAvatarUrl: freelancer?.avatarUrl || null,
+            customerAvatarUrl: null,
+            freelancerName: "Freelancer",
+            freelancerAvatarUrl: null,
             lastMessage:
               latest?.message_type === "IMAGE"
-                ? "Image"
+                ? "📷 Sent an image"
                 : cleanPreviewMessage(latest?.content, latest?.message_type),
             lastAt:
               latest?.created_at ||
@@ -535,33 +426,19 @@ const FloatingChatWidget = () => {
           };
         });
 
-        const mergedMap = new Map<string, ConversationItem>();
-        mapped
-          .sort(
-            (a, b) =>
-              new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()
-          )
-          .forEach((item) => {
-            if (!mergedMap.has(item.roomId)) {
-              mergedMap.set(item.roomId, item);
-            }
-          });
+        const sorted = mapped.sort(
+          (a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()
+        );
 
-        setConversations(Array.from(mergedMap.values()));
+        setConversations(sorted);
         hasLoadedOnceRef.current = true;
         setHasLoadedOnce(true);
         lastLoadTimeRef.current = Date.now();
       } catch (err) {
         console.error("Error loading chat conversations:", err);
-        if (active) {
-          setConversations([]);
-          hasLoadedOnceRef.current = true;
-          setHasLoadedOnce(true);
-        }
       } finally {
         if (fetchUnlockTimer) {
           window.clearTimeout(fetchUnlockTimer);
-          fetchUnlockTimer = null;
         }
         isFetchingRef.current = false;
         if (active) {
@@ -609,9 +486,6 @@ const FloatingChatWidget = () => {
     return () => {
       active = false;
       isFetchingRef.current = false;
-      if (fetchUnlockTimer) {
-        window.clearTimeout(fetchUnlockTimer);
-      }
       window.removeEventListener(
         "service-chat-updated",
         handleExternalChatUpdate
@@ -625,30 +499,10 @@ const FloatingChatWidget = () => {
     if (!query) return conversations;
     return conversations.filter(
       (item) =>
-        item.customerName.toLowerCase().includes(query) ||
-        item.freelancerName.toLowerCase().includes(query) ||
         item.partnerName.toLowerCase().includes(query) ||
-        item.serviceName.toLowerCase().includes(query) ||
         item.lastMessage.toLowerCase().includes(query)
     );
   }, [conversations, search]);
-
-  useEffect(() => {
-    if (!activeChatRoomId) return;
-    const currentConversation = conversations.find(
-      (item) => String(item.roomId) === String(activeChatRoomId)
-    );
-    markRoomAsRead(activeChatRoomId, currentConversation?.lastAt || null);
-  }, [activeChatRoomId, conversations, markRoomAsRead]);
-
-  const hasUnreadConversations = useMemo(() => {
-    return conversations.some((item) => {
-      const lastTs = toTimestamp(item.lastAt);
-      const readTs = toTimestamp(readByRoom[item.roomId]);
-      if (!readByRoom[item.roomId]) return true;
-      return lastTs > readTs;
-    });
-  }, [conversations, readByRoom]);
 
   const unreadCount = useMemo(() => {
     return conversations.reduce((count, item) => {
@@ -661,137 +515,172 @@ const FloatingChatWidget = () => {
     }, 0);
   }, [conversations, readByRoom]);
 
-  if (!isInitialized || !userId) return null;
-  if (isActiveChatPage) return null;
+  const hasUnread = unreadCount > 0;
+
+  if (!isInitialized || !userId || isActiveChatPage) return null;
 
   function formatTime(isoString: string) {
     const date = new Date(isoString);
     if (isNaN(date.getTime())) return "";
-    return date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false
-    });
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    
+    if (isToday) {
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
   return (
     <div
       ref={rootRef}
       className={`fixed right-4 mb-2 md:right-6 z-60 transition-all duration-300 ${
-        isCheckoutFooterPage ? "bottom-41 md:bottom-22" : "bottom-20"
+        isCheckoutFooterPage ? "bottom-44 md:bottom-24" : "bottom-24"
       }`}
     >
       {open && (
-        <div className="mb-4 w-80 md:w-96 rounded-2xl border border-orange-100 bg-white shadow-2xl overflow-hidden flex flex-col max-h-125">
-          <div className="bg-[#FF914D] p-4 flex items-center justify-between text-white">
-            <h3 className="font-black text-lg">Messages</h3>
+        <div className="mb-4 w-[340px] md:w-[400px] rounded-[2rem] border border-orange-100 bg-white shadow-[0_20px_50px_rgba(160,63,0,0.15)] overflow-hidden flex flex-col max-h-[500px] animate-in slide-in-from-bottom-4 zoom-in-95 duration-300">
+          <div className="bg-linear-to-r from-[#FF914D] to-[#FF7F32] p-5 flex items-center justify-between text-white shadow-md">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-white/20 backdrop-blur-sm">
+                <MessageCircle className="w-5 h-5 fill-current" />
+              </div>
+              <div>
+                <h3 className="font-black text-lg leading-tight">Messages</h3>
+                <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest">
+                  {unreadCount > 0 ? `${unreadCount} new messages` : "Active Chats"}
+                </p>
+              </div>
+            </div>
             <button
               onClick={() => setOpen(false)}
-              className="p-1 hover:bg-white/20 rounded-full transition-colors"
+              className="p-2 hover:bg-white/20 rounded-full transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="p-3 border-b border-orange-50 bg-orange-50/30">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <div className="p-4 border-b border-orange-50 bg-[#FDFCFB]">
+            <div className="relative group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-orange-500 transition-colors" />
               <input
                 type="text"
                 placeholder="Search conversations..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-white border border-orange-100 rounded-xl py-2 pl-9 pr-4 text-sm outline-none focus:ring-2 focus:ring-orange-200"
+                className="w-full bg-white border border-orange-100 rounded-2xl py-3 pl-11 pr-4 text-sm font-bold outline-none focus:ring-4 focus:ring-orange-500/10 transition-all shadow-inner"
               />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto bg-[#FDFCFB]">
             {loading && !hasLoadedOnce && conversations.length === 0 ? (
-              <div className="p-8 text-center">
-                <Loading fullScreen={false} size={60} />
-                <p className="text-sm text-gray-500 font-medium">
-                  Loading messages...
-                </p>
+              <div className="py-20 flex flex-col items-center justify-center space-y-4">
+                <Loading fullScreen={false} size={50} />
+                <p className="text-xs font-black text-orange-800/40 uppercase tracking-widest">Syncing Inbox...</p>
               </div>
             ) : filteredConversations.length === 0 ? (
-              <div className="p-8 text-center text-gray-400">
-                <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p className="text-sm">No conversations found</p>
+              <div className="py-20 text-center space-y-4">
+                <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mx-auto border-2 border-dashed border-orange-200">
+                  <Inbox className="w-10 h-10 text-orange-200" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-[#4A2600]">No messages found</p>
+                  <p className="text-xs text-gray-400 px-10">Start a conversation with a freelancer to see it here.</p>
+                </div>
               </div>
             ) : (
-              <div className="divide-y divide-gray-50">
-                {filteredConversations.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => {
-                      markRoomAsRead(item.roomId, item.lastAt);
-                      setOpen(false);
-                      if (profile?.role === "freelance") {
+              <div className="p-2 space-y-1">
+                {filteredConversations.map((item) => {
+                  const lastTs = toTimestamp(item.lastAt);
+                  const readTs = toTimestamp(readByRoom[item.roomId]);
+                  const isUnread = !readByRoom[item.roomId] || lastTs > readTs;
+
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => {
+                        markRoomAsRead(item.roomId, item.lastAt);
+                        setOpen(false);
                         router.navigate({
                           to: "/chat/$id",
                           params: { id: item.roomId }
                         });
-                        return;
-                      }
-
-                      router.navigate({
-                        to: "/chat/$id",
-                        params: { id: item.roomId }
-                      });
-                    }}
-                    className="w-full p-4 flex items-start gap-3 hover:bg-orange-50/50 transition-colors text-left group"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-orange-100 border-2 border-white shadow-sm overflow-hidden shrink-0">
-                      {item.partnerAvatarUrl ? (
-                        <img
-                          src={item.partnerAvatarUrl}
-                          alt={item.partnerName}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-orange-600 font-black text-lg">
-                          {item.partnerName.charAt(0).toUpperCase()}
+                      }}
+                      className={`w-full p-4 flex items-start gap-4 rounded-2xl transition-all text-left group relative
+                        ${isUnread ? "bg-orange-50/50" : "hover:bg-orange-50/30"}`}
+                    >
+                      <div className="relative shrink-0">
+                        <div className={`w-14 h-14 rounded-full border-2 transition-transform group-hover:scale-105 duration-300 overflow-hidden bg-white shadow-sm
+                          ${isUnread ? "border-orange-400" : "border-white"}`}>
+                          {item.partnerAvatarUrl ? (
+                            <img src={item.partnerAvatarUrl} alt={item.partnerName} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-orange-600 font-black text-xl bg-orange-50">
+                              {item.partnerName.charAt(0).toUpperCase()}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <h4 className="font-bold text-[#4A2600] truncate group-hover:text-orange-600 transition-colors">
-                          {item.partnerName}
-                        </h4>
-                        <span className="text-[10px] text-gray-400 font-medium">
-                          {formatTime(item.lastAt)}
-                        </span>
+                        {isUnread && (
+                          <div className="absolute top-0 right-0 w-4 h-4 bg-orange-600 border-2 border-white rounded-full shadow-sm animate-pulse" />
+                        )}
                       </div>
-                      <p className="text-[11px] text-orange-600/70 font-bold uppercase tracking-wider mb-1 truncate">
-                        {item.serviceName}
-                      </p>
-                      <p className="text-xs text-gray-500 line-clamp-1 leading-snug">
-                        {item.lastMessage}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+
+                      <div className="flex-1 min-w-0 pt-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <h4 className={`font-black truncate transition-colors text-sm
+                            ${isUnread ? "text-orange-900" : "text-[#4A2600] group-hover:text-orange-600"}`}>
+                            {item.partnerName}
+                          </h4>
+                          <span className={`text-[10px] font-bold shrink-0
+                            ${isUnread ? "text-orange-600" : "text-gray-400"}`}>
+                            {formatTime(item.lastAt)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-orange-600/70 font-black uppercase tracking-wider mb-1 truncate leading-none">
+                          {item.serviceName}
+                        </p>
+                        <p className={`text-xs line-clamp-1 leading-snug
+                          ${isUnread ? "text-[#4A2600] font-bold" : "text-gray-500 font-medium"}`}>
+                          {item.lastMessage}
+                        </p>
+                      </div>
+                      
+                      <div className="self-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <ChevronRight className="w-4 h-4 text-orange-400" />
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
       )}
 
+      {/* FAB */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 bg-[#FF914D] text-white"
+          className={`w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-500 hover:scale-110 active:scale-95 group relative
+            ${hasUnread ? "bg-[#A03F00] animate-bounce" : "bg-[#FF914D]"}`}
         >
           <div className="relative">
-            <MessageCircle className="w-7 h-7 md:w-8 md:h-8 fill-current" />
-            {hasUnreadConversations && (
-              <span className="absolute -top-2 -right-2 min-w-4.5 h-4.5 px-1 bg-red-500 text-white rounded-full border-2 border-[#FF914D] text-[10px] font-black leading-none flex items-center justify-center">
+            <MessageCircle className={`w-7 h-7 md:w-8 md:h-8 fill-current transition-transform duration-500 group-hover:rotate-12
+              ${hasUnread ? "text-orange-100" : "text-white"}`} />
+            {hasUnread && (
+              <span className="absolute -top-3 -right-3 min-w-[22px] h-[22px] px-1.5 bg-red-600 text-white rounded-full border-2 border-white text-[10px] font-black flex items-center justify-center shadow-lg">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
           </div>
+          
+          {/* New message tooltip-like badge */}
+          {hasUnread && (
+            <div className="absolute -left-20 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-[#4A2600] text-white text-[10px] font-black rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl">
+              {unreadCount} New Chats
+            </div>
+          )}
         </button>
       )}
     </div>
