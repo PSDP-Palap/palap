@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { MapContainer, TileLayer, useMapEvents } from "react-leaflet";
 
+import { ServiceManagementDialog } from "@/components/admin/service-management/ServiceManagementDialog";
 import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
 import type {
@@ -40,9 +41,12 @@ interface MyJobsTabProps {
       mapLng?: number;
     }
   ) => Promise<void>;
+  updateMyService: (
+    serviceId: string,
+    data: Partial<Omit<Service, "service_id">>
+  ) => Promise<void>;
+  deleteMyService: (serviceId: string) => Promise<void>;
   creating: boolean;
-  repairMyServiceLinks: () => Promise<void>;
-  repairingLinks: boolean;
   services: Service[];
   loadingServices: boolean;
   error: string | null;
@@ -88,9 +92,9 @@ const MyJobsTab = ({
   completeDeliveryOrder,
   completingOrderId,
   createMyService,
+  updateMyService,
+  deleteMyService,
   creating,
-  repairMyServiceLinks,
-  repairingLinks,
   services,
   loadingServices,
   error,
@@ -105,6 +109,7 @@ const MyJobsTab = ({
   const [pickupAddress, setPickupAddress] = useState("");
   const [destinationAddress, setDestinationAddress] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [mapLat, setMapLat] = useState(13.7563);
   const [mapLng, setMapLng] = useState(100.5018);
   const [mapExpanded, setMapExpanded] = useState(false);
@@ -112,16 +117,15 @@ const MyJobsTab = ({
     useState<LocationField>("pickup");
   const [resolvingAddress, setResolvingAddress] = useState(false);
 
+  // Management State
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
+
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setImageUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    setSelectedFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setImageUrl(objectUrl);
   };
 
   const resolveAddressFromCoordinates = async (
@@ -163,7 +167,7 @@ const MyJobsTab = ({
       category,
       pickupAddress,
       destinationAddress,
-      image_url: imageUrl,
+      imageFile: selectedFile,
       mapLat,
       mapLng
     });
@@ -174,6 +178,7 @@ const MyJobsTab = ({
     setPickupAddress("");
     setDestinationAddress("");
     setImageUrl("");
+    setSelectedFile(null);
   };
 
   const mapBounds = {
@@ -649,19 +654,6 @@ const MyJobsTab = ({
       <section className="bg-white rounded-xl border border-orange-100 p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-xl font-black text-[#4A2600]">My Services</h3>
-          <button
-            type="button"
-            onClick={repairMyServiceLinks}
-            disabled={
-              repairingLinks ||
-              loadingServices ||
-              !currentUserId ||
-              services.length === 0
-            }
-            className="px-4 py-2 rounded-md bg-[#A03F00] text-white font-black text-xs uppercase disabled:bg-gray-300"
-          >
-            {repairingLinks ? "Repairing..." : "Repair Owner Links"}
-          </button>
         </div>
         {loadingServices ? (
           <Loading fullScreen={false} size={40} />
@@ -692,14 +684,31 @@ const MyJobsTab = ({
                       : service.dest_address || service.destination_address_id}
                   </p>
                 </div>
-                <p className="text-xs text-gray-400">
-                  {String(service.service_id)}
-                </p>
+                <div className="flex flex-col items-end gap-2">
+                  <p className="text-xs text-gray-400">
+                    {String(service.service_id)}
+                  </p>
+                  <button
+                    onClick={() => setSelectedService(service)}
+                    className="px-3 py-1 rounded-md bg-orange-100 text-[#A03F00] text-xs font-black"
+                  >
+                    Manage
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </section>
+
+      <ServiceManagementDialog
+        key={selectedService?.service_id || "new"}
+        isOpen={!!selectedService}
+        service={selectedService}
+        onClose={() => setSelectedService(null)}
+        onUpdate={updateMyService}
+        onDelete={deleteMyService}
+      />
     </div>
   );
 };
