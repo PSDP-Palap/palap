@@ -1,6 +1,7 @@
 interface PaymentSummaryProps {
   subtotal: number;
   tax: number;
+  deliveryFee: number;
   total: number;
   isSubmitting: boolean;
   proceedDisabled: boolean;
@@ -13,6 +14,7 @@ interface PaymentSummaryProps {
 export function PaymentSummary({
   subtotal,
   tax,
+  deliveryFee,
   total,
   isSubmitting,
   proceedDisabled,
@@ -28,13 +30,19 @@ export function PaymentSummary({
       </h2>
       <div className="space-y-2 text-sm border-b border-gray-100 pb-3">
         <div className="flex items-center justify-between">
-          <p className="text-gray-600">Service</p>
+          <p className="text-gray-600">Items Subtotal</p>
           <p className="font-semibold text-[#4A2600]">
             ฿ {subtotal.toFixed(2)}
           </p>
         </div>
         <div className="flex items-center justify-between">
-          <p className="text-gray-600">Tax</p>
+          <p className="text-gray-600">Delivery Fee</p>
+          <p className="font-semibold text-[#4A2600]">
+            ฿ {deliveryFee.toFixed(2)}
+          </p>
+        </div>
+        <div className="flex items-center justify-between">
+          <p className="text-gray-600">Tax (3%)</p>
           <p className="font-semibold text-[#4A2600]">
             ฿ {tax.toFixed(2)}
           </p>

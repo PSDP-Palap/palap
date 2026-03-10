@@ -16,6 +16,7 @@ interface OrderReviewModalProps {
   onConfirm: () => void;
   orderRows: OrderItem[];
   subtotal: number;
+  deliveryFee: number;
   tax: number;
   total: number;
   addressName: string;
@@ -30,6 +31,7 @@ export function OrderReviewModal({
   onConfirm,
   orderRows,
   subtotal,
+  deliveryFee,
   tax,
   total,
   addressName,
@@ -122,8 +124,12 @@ export function OrderReviewModal({
           {/* Summary */}
           <div className="border-t border-dashed border-orange-200 pt-4 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Subtotal</span>
+              <span className="text-gray-600">Items Subtotal</span>
               <span className="font-bold text-[#4A2600]">฿{subtotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Delivery Fee</span>
+              <span className="font-bold text-[#4A2600]">฿{deliveryFee.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Tax (3%)</span>

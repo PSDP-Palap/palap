@@ -358,6 +358,23 @@ function RouteComponent() {
     setLocationError(null);
   };
 
+  const orderRows = useMemo(() => {
+    return products
+      .map((product) => {
+        const productId = product.id || "";
+        const quantity = cartItems[productId] || 0;
+        return {
+          id: productId,
+          name: product.name,
+          imageUrl: product.image_url || null,
+          quantity,
+          unitPrice: product.price,
+          subtotal: product.price * quantity
+        };
+      })
+      .filter((row) => row.quantity > 0);
+  }, [products, cartItems]);
+
   const proceedToPayment = async () => {
     if (orderRows.length === 0) return;
 
@@ -378,6 +395,12 @@ function RouteComponent() {
     }
   };
 
+  const subtotal = orderRows.reduce((sum, row) => sum + row.subtotal, 0);
+  const totalItems = orderRows.reduce((sum, row) => sum + row.quantity, 0);
+  const deliveryFee = Math.round(subtotal * 0.05 * 100) / 100; // 5% of subtotal
+  const tax = Math.round((subtotal + deliveryFee) * 0.03 * 100) / 100;
+  const total = subtotal + deliveryFee + tax;
+
   const handleConfirmPayment = () => {
     setIsReviewModalOpen(false);
     router.navigate({
@@ -386,32 +409,11 @@ function RouteComponent() {
         subtotal,
         tax,
         total,
+        deliveryFee,
         address_id: destinationAddressId || undefined
       }
     });
   };
-
-  const orderRows = useMemo(() => {
-    return products
-      .map((product) => {
-        const productId = product.id || "";
-        const quantity = cartItems[productId] || 0;
-        return {
-          id: productId,
-          name: product.name,
-          imageUrl: product.image_url || null,
-          quantity,
-          unitPrice: product.price,
-          subtotal: product.price * quantity
-        };
-      })
-      .filter((row) => row.quantity > 0);
-  }, [products, cartItems]);
-
-  const subtotal = orderRows.reduce((sum, row) => sum + row.subtotal, 0);
-  const totalItems = orderRows.reduce((sum, row) => sum + row.quantity, 0);
-  const tax = Math.round(subtotal * 0.03 * 100) / 100;
-  const total = subtotal + tax;
   const lat = toNumber(locationLat) ?? 13.7563;
   const lng = toNumber(locationLng) ?? 100.5018;
   const mapLeafletBounds: [[number, number], [number, number]] = [
@@ -494,6 +496,7 @@ function RouteComponent() {
             <PriceSummarySide
               totalItems={totalItems}
               subtotal={subtotal}
+              deliveryFee={deliveryFee}
               tax={tax}
               total={total}
               proceedingToPayment={proceedingToPayment}
@@ -510,6 +513,7 @@ function RouteComponent() {
         onConfirm={handleConfirmPayment}
         orderRows={orderRows}
         subtotal={subtotal}
+        deliveryFee={deliveryFee}
         tax={tax}
         total={total}
         addressName={locationName}

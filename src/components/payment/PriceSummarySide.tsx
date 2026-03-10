@@ -5,6 +5,7 @@ interface PriceSummarySideProps {
   subtotal: number;
   tax: number;
   total: number;
+  deliveryFee: number;
   proceedingToPayment: boolean;
   proceedToPayment: () => void;
   orderRowsCount: number;
@@ -15,6 +16,7 @@ export function PriceSummarySide({
   subtotal,
   tax,
   total,
+  deliveryFee,
   proceedingToPayment,
   proceedToPayment,
   orderRowsCount,
@@ -28,11 +30,15 @@ export function PriceSummarySide({
           <p className="font-semibold text-[#4A2600]">{totalItems}</p>
         </div>
         <div className="flex items-center justify-between">
-          <p className="text-gray-600">Service</p>
+          <p className="text-gray-600">Service subtotal</p>
           <p className="font-semibold text-[#4A2600]">฿{subtotal.toFixed(2)}</p>
         </div>
         <div className="flex items-center justify-between">
-          <p className="text-gray-600">Tax</p>
+          <p className="text-gray-600">Delivery Fee</p>
+          <p className="font-semibold text-[#4A2600]">฿{deliveryFee.toFixed(2)}</p>
+        </div>
+        <div className="flex items-center justify-between">
+          <p className="text-gray-600">Tax (3%)</p>
           <p className="font-semibold text-[#4A2600]">฿{tax.toFixed(2)}</p>
         </div>
       </div>

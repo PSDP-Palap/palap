@@ -22,6 +22,7 @@ const paymentSearchSchema = z.object({
   subtotal: z.coerce.number().optional().default(0),
   tax: z.coerce.number().optional().default(0),
   total: z.coerce.number().optional().default(0),
+  deliveryFee: z.coerce.number().optional().default(0),
   order_id: z.string().optional(),
   address_id: z.string().optional()
 });
@@ -47,7 +48,7 @@ export const Route = createFileRoute("/_authenticated/payment")({
 
 function RouteComponent() {
   const router = useRouter();
-  const { subtotal, tax, total, order_id, address_id } = Route.useSearch();
+  const { subtotal, tax, total, deliveryFee, order_id, address_id } = Route.useSearch();
   const cartItems = useCartStore((s) => s.items);
   const clearCart = useCartStore((s) => s.clear);
   const { profile, session } = useUserStore();
@@ -326,6 +327,7 @@ function RouteComponent() {
             <PaymentSummary
               subtotal={subtotal}
               tax={tax}
+              deliveryFee={deliveryFee}
               total={total}
               isSubmitting={isSubmitting}
               proceedDisabled={proceedDisabled}
