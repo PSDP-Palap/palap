@@ -16,8 +16,7 @@ interface UserState {
   setProfile: (profile: Profile | null) => void;
   fetchProfile: () => Promise<Profile | null>;
   initialize: () => Promise<void>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  updateProfile: (updates: Partial<Profile>) => Promise<{ error: any }>;
+  updateProfile: (updates: Partial<Profile & { lat?: number | null; lng?: number | null }>) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
 }
 
@@ -71,10 +70,10 @@ export const useUserStore = create<UserState>((set, get) => ({
       if (profile?.role === "customer") {
         const { data: customer } = await supabase
           .from("customers")
-          .select("address")
+          .select("address_id, addresses:address_id(address_detail)")
           .eq("id", userId)
           .maybeSingle();
-        address = customer?.address;
+        address = (customer?.addresses as any)?.address_detail || null;
       }
 
       const finalProfile = profile
@@ -152,11 +151,11 @@ export const useUserStore = create<UserState>((set, get) => ({
     });
   },
 
-  updateProfile: async (updates: Partial<Profile>) => {
+  updateProfile: async (updates: Partial<Profile & { lat?: number | null; lng?: number | null }>) => {
     const { profile } = get();
     if (!profile) return { error: "No profile found" };
 
-    const { full_name, phone_number, address } = updates;
+    const { full_name, phone_number, address, lat, lng } = updates;
     console.log("Updating profile for ID:", profile.id, "with updates:", updates);
 
     // Update profiles table
@@ -170,15 +169,58 @@ export const useUserStore = create<UserState>((set, get) => ({
       return { error: profileError };
     }
 
-    // Update customers table if role is customer
-    if (profile.role === "customer" && address !== undefined) {
-      console.log("Updating customers table for ID:", profile.id);
+    // Update customers and addresses table if role is customer
+    if (profile.role === "customer") {
+      console.log("Updating customer address for ID:", profile.id);
 
+      let addressId = null;
+
+      // 1. Check if customer already has an address_id
+      const { data: customerData } = await supabase
+        .from("customers")
+        .select("address_id")
+        .eq("id", profile.id)
+        .maybeSingle();
+
+      addressId = customerData?.address_id;
+
+      const addressPayload = {
+        name: "Home Address",
+        address_detail: address,
+        lat: lat,
+        lng: lng,
+        profile_id: profile.id
+      };
+
+      if (addressId) {
+        // Update existing address
+        const { error: addrError } = await supabase
+          .from("addresses")
+          .update(addressPayload)
+          .eq("id", addressId);
+        
+        if (addrError) console.error("Error updating address:", addrError);
+      } else if (address || (lat && lng)) {
+        // Create new address
+        const { data: newAddr, error: addrError } = await supabase
+          .from("addresses")
+          .insert([addressPayload])
+          .select("id")
+          .single();
+        
+        if (addrError) {
+          console.error("Error creating address:", addrError);
+        } else {
+          addressId = newAddr.id;
+        }
+      }
+
+      // 2. Upsert customer record with address_id
       const { error: customerError } = await supabase
         .from("customers")
         .upsert({
           id: profile.id,
-          address,
+          address_id: addressId,
           updated_at: new Date().toISOString()
         });
 

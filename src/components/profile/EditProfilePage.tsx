@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
 import Loading from "@/components/shared/Loading";
+import MapPicker from "@/components/shared/MapPicker";
 import { useUserStore } from "@/stores/useUserStore";
 
 const EditProfilePage = () => {
@@ -12,16 +13,21 @@ const EditProfilePage = () => {
   const [formData, setFormData] = useState({
     full_name: "",
     phone_number: "",
-    address: ""
+    address: "",
+    lat: null as number | null,
+    lng: null as number | null
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
 
   useEffect(() => {
     if (profile) {
       setFormData({
         full_name: profile.full_name || "",
         phone_number: profile.phone_number || "",
-        address: profile.address || ""
+        address: profile.address || "",
+        lat: null, // We'll need to fetch these if we want them initially
+        lng: null
       });
     }
   }, [profile]);
@@ -37,6 +43,26 @@ const EditProfilePage = () => {
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleMapChange = async (lat: number, lng: number) => {
+    setFormData((prev) => ({ ...prev, lat, lng }));
+    
+    // Reverse Geocoding
+    try {
+      setIsResolving(true);
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
+      );
+      const data = await response.json();
+      if (data && data.display_name) {
+        setFormData(prev => ({ ...prev, address: data.display_name }));
+      }
+    } catch (error) {
+      console.error("Geocoding error:", error);
+    } finally {
+      setIsResolving(false);
+    }
   };
 
   const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
@@ -127,18 +153,32 @@ const EditProfilePage = () => {
               </div>
 
               {profile.role === "customer" && (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-500 uppercase mb-1">
-                    Home Address
-                  </label>
-                  <textarea
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                    rows={3}
-                    className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#9a3c0b]/20 focus:border-[#9a3c0b] transition-all"
-                    placeholder="Your detailed address..."
-                  />
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-500 uppercase mb-1">
+                      Home Location
+                    </label>
+                    <div className="mb-2">
+                      <MapPicker lat={formData.lat} lng={formData.lng} onChange={handleMapChange} />
+                      <p className="text-[10px] text-gray-400 mt-2 px-2 italic">
+                        Click on the map to pin your exact delivery location.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-500 uppercase mb-1">
+                      Home Address Detail {isResolving && <span className="text-[10px] lowercase animate-pulse">(resolving...)</span>}
+                    </label>
+                    <textarea
+                      name="address"
+                      value={formData.address}
+                      onChange={handleChange}
+                      rows={3}
+                      className="w-full px-4 py-3 rounded-2xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#9a3c0b]/20 focus:border-[#9a3c0b] transition-all"
+                      placeholder="Your detailed address..."
+                    />
+                  </div>
                 </div>
               )}
             </div>

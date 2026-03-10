@@ -216,8 +216,19 @@ export function LocationSection({
         </div>
       ) : (
         <div>
-          <p className="text-sm font-bold text-[#4A2600]">{locationName}</p>
-          <p className="text-xs text-gray-600 mt-1">{locationDetail}</p>
+          {locationName ? (
+            <>
+              <p className="text-sm font-bold text-[#4A2600]">{locationName}</p>
+              <p className="text-xs text-gray-600 mt-1">{locationDetail}</p>
+            </>
+          ) : (
+            <div className="bg-red-50 border border-red-100 rounded-md p-3 mb-2">
+              <p className="text-sm font-bold text-red-700">No Address Set</p>
+              <p className="text-xs text-red-600">
+                Please click "Edit" or use your current location to set a delivery destination.
+              </p>
+            </div>
+          )}
           <div className="rounded-md overflow-hidden border border-gray-200 mt-3">
             <iframe
               title="Destination location"

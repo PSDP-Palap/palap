@@ -28,10 +28,8 @@ function RouteComponent() {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [locationName, setLocationName] = useState("Location Main");
-  const [locationDetail, setLocationDetail] = useState(
-    "123 Ladkrabang Road, Bangkok, Landkrabang, 10520"
-  );
+  const [locationName, setLocationName] = useState("");
+  const [locationDetail, setLocationDetail] = useState("");
   const [locationLat, setLocationLat] = useState("13.7563");
   const [locationLng, setLocationLng] = useState("100.5018");
   const [destinationAddressId, setDestinationAddressId] = useState<
@@ -118,6 +116,7 @@ function RouteComponent() {
       if (!currentUserId) return;
 
       try {
+        setLoading(true);
         setLocationError(null);
 
         const { data: customerRow, error: customerError } = await supabase
@@ -131,9 +130,21 @@ function RouteComponent() {
         const addressId = customerRow?.address_id
           ? String(customerRow.address_id)
           : null;
+        
         if (!addressId) {
-          setDestinationAddressId(null);
-          setSavedAddress(null);
+          // Fallback to profile address text if available
+          if (profile?.address) {
+            setLocationName("Home Address");
+            setLocationDetail(profile.address);
+            setIsEditingLocation(true); // Open edit so they can confirm/adjust on map
+          } else {
+            setDestinationAddressId(null);
+            setSavedAddress(null);
+            setLocationName("");
+            setLocationDetail("");
+            setLocationError("No address found. Please provide your delivery location.");
+            setIsEditingLocation(true); // Force edit mode if no address
+          }
           return;
         }
 
@@ -144,7 +155,11 @@ function RouteComponent() {
           .maybeSingle();
 
         if (addressError) throw addressError;
-        if (!addressRow) return;
+        if (!addressRow) {
+          setLocationError("Your saved address record was not found. Please set a new one.");
+          setIsEditingLocation(true);
+          return;
+        }
 
         const snapshot: SavedAddressSnapshot = {
           id: String(addressRow.id),
@@ -162,11 +177,13 @@ function RouteComponent() {
         setLocationLng(snapshot.lng);
       } catch (err: any) {
         setLocationError(err?.message || "Unable to load your saved location.");
+      } finally {
+        setLoading(false);
       }
     };
 
     loadCustomerLocation();
-  }, [currentUserId]);
+  }, [currentUserId, profile?.id, profile?.address]);
 
   const persistLocation = async () => {
     if (!currentUserId) {
@@ -354,7 +371,8 @@ function RouteComponent() {
         search: {
           subtotal,
           tax,
-          total
+          total,
+          address_id: nextAddressId
         }
       });
     } catch (err: any) {
