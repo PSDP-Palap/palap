@@ -7,7 +7,6 @@ import {
   MessageSquare, 
   Navigation, 
   ShieldCheck, 
-  Star, 
   User 
 } from "lucide-react";
 
@@ -116,10 +115,6 @@ export function ServiceDetailView({
                   <div className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-600 rounded-full text-xs font-bold border border-green-100">
                     <ShieldCheck className="w-4 h-4" />
                     Verified Provider
-                  </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-xs font-bold border border-orange-100">
-                    <Star className="w-4 h-4 fill-orange-600" />
-                    4.9 (120+ Reviews)
                   </div>
                 </div>
               </div>
@@ -322,10 +317,6 @@ export function ServiceDetailView({
                       </div>
                       <div className="flex-1">
                         <p className="text-base font-black text-[#4A2600] line-clamp-1">{creator?.full_name || creator?.email || "Freelance User"}</p>
-                        <div className="flex items-center gap-1 text-orange-500">
-                           <Star className="w-3 h-3 fill-orange-500" />
-                           <span className="text-[10px] font-black">TOP RATED</span>
-                        </div>
                       </div>
                       <ChevronRight className="w-5 h-5 text-orange-200" />
                    </div>

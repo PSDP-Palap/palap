@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { ImageIcon, MapPin, Plus, Settings, Tag, Zap } from "lucide-react";
 import { useState } from "react";
 
 import { ServiceManagementDialog } from "@/components/admin/service-management/ServiceManagementDialog";
@@ -434,42 +434,62 @@ const MyJobsTab = ({
             <p className="text-sm font-bold text-gray-300 uppercase tracking-widest">No services published yet</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {services.map((service) => (
-              <div
-                key={String(service.service_id)}
-                className="group border-2 border-orange-50 rounded-3xl p-5 hover:border-orange-200 hover:shadow-xl hover:shadow-orange-50 transition-all"
-              >
-                <div className="aspect-video rounded-2xl bg-orange-50 mb-4 overflow-hidden relative">
-                  {service.image_url ? (
-                    <img src={service.image_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-orange-200">
-                       <Plus className="w-8 h-8" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {services.map((service) => {
+              const hasActiveJobs = ongoingServiceJobs.some(job => job.serviceId === (service.id || service.service_id));
+              return (
+                <div
+                  key={String(service.service_id || service.id)}
+                  className="group bg-white rounded-3xl p-5 border-2 border-orange-50 hover:border-orange-200 hover:shadow-2xl hover:shadow-orange-100 transition-all duration-300 flex flex-col"
+                >
+                  <div className="aspect-video rounded-2xl bg-orange-50 mb-4 overflow-hidden relative">
+                    {service.image_url ? (
+                      <img src={service.image_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-orange-200">
+                         <ImageIcon className="w-8 h-8" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
+                    <div className="absolute top-3 left-3 flex gap-1.5">
+                      <span className="px-3 py-1 bg-white/90 backdrop-blur-md rounded-full text-[9px] font-black text-orange-600 uppercase tracking-widest shadow-sm border border-orange-50 flex items-center gap-1.5">
+                        <Tag className="w-3 h-3" />
+                        {service.category}
+                      </span>
+                      {hasActiveJobs && (
+                        <span className="px-3 py-1 bg-blue-500/90 backdrop-blur-md rounded-full text-[9px] font-black text-white uppercase tracking-widest shadow-sm border border-blue-300 flex items-center gap-1.5">
+                          <Zap className="w-3 h-3" />
+                          Active
+                        </span>
+                      )}
                     </div>
-                  )}
-                  <div className="absolute top-3 left-3">
-                    <span className="px-3 py-1 bg-white/90 backdrop-blur-md rounded-full text-[10px] font-black text-orange-500 uppercase tracking-widest shadow-sm">
-                      {service.category}
-                    </span>
+                  </div>
+                  <div className="flex flex-col flex-1">
+                    <p className="font-black text-[#4A2600] text-lg mb-2 truncate group-hover:text-orange-700 transition-colors">{service.name}</p>
+                    
+                    <div className="flex items-center gap-2 mb-4 text-gray-400 group-hover:text-orange-400 transition-colors">
+                      <MapPin className="w-4 h-4 shrink-0" />
+                      <p className="text-xs font-bold truncate">
+                        {service.detail_1 || "No pickup location set"}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-auto pt-4 border-t border-orange-50">
+                      <p className="text-2xl font-black text-[#A03F00]">
+                        ฿ {Number(service.price ?? 0).toLocaleString()}
+                      </p>
+                      <button
+                        onClick={() => setSelectedService(service)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-50 text-orange-500 text-[10px] font-black hover:bg-orange-100 hover:text-orange-600 transition-all group-hover:shadow-lg group-hover:shadow-orange-50"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        Manage
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div className="flex flex-col h-full">
-                  <p className="font-black text-[#4A2600] text-lg mb-1 truncate">{service.name}</p>
-                  <div className="flex items-center justify-between mt-auto">
-                    <p className="text-xl font-black text-orange-600">
-                      ฿ {Number(service.price ?? 0).toLocaleString()}
-                    </p>
-                    <button
-                      onClick={() => setSelectedService(service)}
-                      className="px-4 py-2 rounded-xl bg-orange-50 text-orange-500 text-[10px] font-black hover:bg-orange-100 transition-all"
-                    >
-                      Manage
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </section>
