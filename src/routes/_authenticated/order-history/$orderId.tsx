@@ -177,9 +177,8 @@ function RouteComponent() {
 
   const steps = [
     { id: 'WAITING', label: 'Order Placed', icon: Package },
-    { id: 'ACCEPTED', label: 'Accepted', icon: CheckCircle2 },
-    { id: 'PICKING_UP', label: 'Picking Up', icon: Building },
-    { id: 'DELIVERING', label: 'On the Way', icon: Truck },
+    { id: 'ON_MY_WAY', label: 'Accepted', icon: CheckCircle2 },
+    { id: 'IN_SERVICE', label: 'In Service', icon: Building },
     { id: 'COMPLETE', label: 'Delivered', icon: ShieldCheck }
   ];
 

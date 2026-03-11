@@ -133,7 +133,30 @@ function OrderHistoryPage() {
 
   useEffect(() => {
     loadOrderHistory();
-  }, [loadOrderHistory]);
+
+    if (!currentUserId) return;
+
+    // Real-time subscription for order updates
+    const channel = supabase
+      .channel(`order-history-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `customer_id=eq.${currentUserId}`
+        },
+        () => {
+          loadOrderHistory({ background: true });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadOrderHistory, currentUserId]);
 
   const filteredOrders = orderHistory.filter(item => {
     if (activeTab === 'active') return !item.isCompleted && item.status !== 'CANCEL';
@@ -148,9 +171,8 @@ function OrderHistoryPage() {
       case 'CANCEL': return 'bg-red-100 text-red-700 border-red-200';
       case 'PENDING':
       case 'WAITING': return 'bg-orange-100 text-orange-700 border-orange-200';
-      case 'ACCEPTED':
-      case 'PICKING_UP': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'DELIVERING': return 'bg-purple-100 text-purple-700 border-purple-200';
+      case 'ON_MY_WAY': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'IN_SERVICE': return 'bg-purple-100 text-purple-700 border-purple-200';
       default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };

@@ -7,7 +7,6 @@ import {
   Map as MapIcon,
   AlertCircle,
   ArrowLeft,
-  Tag,
   MessageSquare,
   ShieldCheck,
   Truck,

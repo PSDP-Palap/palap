@@ -5,7 +5,6 @@ import {
   Truck, 
   MessageSquare, 
   CheckCircle2, 
-  CreditCard,
   Building,
   ArrowLeft,
   Phone,
@@ -32,8 +31,6 @@ interface DeliveryTrackingViewProps {
   acknowledgeDeliveredNotice: () => void;
   loadTracking: (id: string) => void;
   router: any;
-  handlePay?: () => Promise<void>;
-  isPaying?: boolean;
 }
 
 export function DeliveryTrackingView({
@@ -43,21 +40,17 @@ export function DeliveryTrackingView({
   trackingError,
   pickupCoords,
   destinationCoords,
-  freelancerCoords,
-  handlePay,
-  isPaying = false
+  freelancerCoords
 }: DeliveryTrackingViewProps) {
   
   const steps = [
     { id: 'WAITING', icon: Package },
-    { id: 'ACCEPTED', icon: CheckCircle2 },
-    { id: 'PICKING_UP', icon: Building },
-    { id: 'DELIVERING', icon: Truck },
+    { id: 'ON_MY_WAY', icon: CheckCircle2 },
+    { id: 'IN_SERVICE', icon: Building },
     { id: 'COMPLETE', icon: CheckCircle2 }
   ];
 
   const currentStepIndex = steps.findIndex(s => s.id === status);
-  const isCompleteUnpaid = status === "COMPLETE" && !trackingData.paymentId;
 
   if (trackingLoading && !trackingData) return <Loading />;
 

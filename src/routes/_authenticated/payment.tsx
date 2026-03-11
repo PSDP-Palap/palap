@@ -147,12 +147,12 @@ function RouteComponent() {
   const canProceedCash = cashSubmitted;
   const canProceedByMethod =
     paymentMethod === "CARD"
-      ? true // Allow clicking to show errors
+      ? canProceedCard
       : paymentMethod === "QR"
         ? canProceedQr
         : canProceedCash;
 
-  const proceedDisabled = total <= 0 || isSubmitting || (paymentMethod !== "CARD" && !canProceedByMethod);
+  const proceedDisabled = total <= 0 || isSubmitting || !canProceedByMethod;
 
   // Add real-time validation after first attempt or as they type
   useEffect(() => {
@@ -327,6 +327,13 @@ function RouteComponent() {
     }
   };
 
+  const getButtonText = () => {
+    if (paymentMethod === "CARD" && !canProceedCard) return "Enter Card Details";
+    if (paymentMethod === "QR" && !canProceedQr) return "Upload Receipt";
+    if (paymentMethod === "CASH" && !canProceedCash) return "Confirm Cash Payment";
+    return order_id ? "Complete Payment" : "Place Order & Pay";
+  };
+
   if (!isCartReady) return <Loading />;
 
   return (
@@ -467,7 +474,7 @@ function RouteComponent() {
                 completePayment={completePayment}
                 onBack={() => {}}
                 submitError={submitError}
-                buttonText={order_id ? "Complete Payment" : "Place Order & Pay"}
+                buttonText={getButtonText()}
               />
 
               {/* Secure Trust Badge */}

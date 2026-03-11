@@ -126,28 +126,6 @@ function OrderTrackingPage() {
     [trackingData]
   );
 
-  const handlePay = async () => {
-    if (!trackingData || !currentUserId || !order_id) return;
-    const price = trackingData.price || 0;
-    // Back-calculate subtotal assuming original tax(3%) and delivery(20%)
-    // Price = subtotal * (1 + 0.20 + 0.03) = subtotal * 1.23
-    const subtotal = Math.round(price / 1.23);
-    const deliveryFee = Math.round(subtotal * 0.20);
-    const tax = Math.round((subtotal + deliveryFee) * 0.03);
-    const total = subtotal + deliveryFee + tax;
-
-    router.navigate({
-      to: "/payment",
-      search: {
-        subtotal: subtotal,
-        deliveryFee: deliveryFee,
-        tax: tax,
-        total: total,
-        order_id: order_id
-      }
-    });
-  };
-
   useEffect(() => {
     if (!order_id) return;
     loadTracking(order_id);
@@ -227,7 +205,6 @@ function OrderTrackingPage() {
       acknowledgeDeliveredNotice={() => setShowDeliveredNotice(false)}
       loadTracking={loadTracking}
       router={router}
-      handlePay={handlePay}
     />
   );
 }
