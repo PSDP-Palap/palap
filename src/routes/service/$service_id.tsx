@@ -616,19 +616,19 @@ function RouteComponent() {
       setSendingHireRequest(true);
       setRequestError(null);
 
-      // Check for unpaid orders
-      const { data: unpaidOrders } = await supabase
-        .from("orders")
-        .select("order_id")
-        .eq("customer_id", currentUserId)
-        .eq("status", "COMPLETE")
-        .is("payment_id", null)
-        .limit(1);
+      // // Check for unpaid orders
+      // const { data: unpaidOrders } = await supabase
+      //   .from("orders")
+      //   .select("order_id")
+      //   .eq("customer_id", currentUserId)
+      //   .eq("status", "COMPLETE")
+      //   .is("payment_id", null)
+      //   .limit(1);
 
-      if (unpaidOrders && unpaidOrders.length > 0) {
-        toast.error("Please pay for your completed orders before hiring again.");
-        return;
-      }
+      // if (unpaidOrders && unpaidOrders.length > 0) {
+      //   toast.error("Please pay for your completed orders before hiring again.");
+      //   return;
+      // }
 
       // 1. Create order first
       const { data: newOrder, error: orderError } = await supabase

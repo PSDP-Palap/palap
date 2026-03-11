@@ -84,54 +84,35 @@ function JobsRoute() {
       setCreating(true);
       setError(null);
 
-      let pickupAddressId = null;
-      let destinationAddressId = null;
-
-      // Create pickup address if provided
-      if (formData.pickupAddress) {
-        const { data: pAddr, error: pError } = await supabase
-          .from("addresses")
-          .insert({
-            name: formData.pickupAddress,
-            address_detail: formData.pickupAddress,
-            is_public: true
-          })
-          .select("id")
-          .single();
-        if (pError) throw pError;
-        pickupAddressId = pAddr.id;
-      }
-
-      // Create destination address if provided
-      if (formData.destinationAddress) {
-        const { data: dAddr, error: dError } = await supabase
-          .from("addresses")
-          .insert({
-            name: formData.destinationAddress,
-            address_detail: formData.destinationAddress,
-            is_public: true
-          })
-          .select("id")
-          .single();
-        if (dError) throw dError;
-        destinationAddressId = dAddr.id;
+      // 1. Upload image if provided
+      let finalImageUrl = "";
+      if (formData.imageFile) {
+        try {
+          finalImageUrl = await uploadServiceImage(formData.imageFile);
+        } catch (uploadErr) {
+          console.error("Image upload failed:", uploadErr);
+          throw new Error("Failed to upload service image.");
+        }
       }
 
       const payload = {
         name: formData.name,
         price: Number(formData.price),
         category: formData.category,
-        pickup_address_id: pickupAddressId,
-        destination_address_id: destinationAddressId,
-        image_url: formData.image_url,
+        pickup_address_id: null,
+        destination_address_id: null,
+        detail_1: formData.pickupAddress || "",
+        detail_2: formData.destinationAddress || "",
+        image_url: finalImageUrl,
         created_by: currentUserId
       };
       const { error } = await supabase.from("services").insert([payload]);
       if (error) throw error;
-      setSuccess("Service created successfully!");
+      toast.success("Service created successfully!");
       await loadMyServices();
     } catch (err: any) {
       setError(err?.message || "Unable to create service.");
+      toast.error(err?.message || "Unable to create service.");
     } finally {
       setCreating(false);
     }
@@ -238,7 +219,7 @@ function JobsRoute() {
         addressIds.length
           ? supabase
               .from("addresses")
-              .select("id, name, address")
+              .select("id, name, address_detail")
               .in("id", addressIds)
           : { data: [] },
         orderIds.length
@@ -367,12 +348,12 @@ function JobsRoute() {
     if (!currentUserId) return;
     try {
       setLoadingOngoingServiceJobs(true);
-      // Fetch orders where status is 'ON_MY_WAY', 'IN_SERVICE', or 'COMPLETE' (but unpaid)
+      // Fetch orders where status is 'ON_MY_WAY' or 'IN_SERVICE'
       const { data: orders, error: ordersError } = await supabase
         .from("orders")
         .select("*, services(name)")
         .eq("freelance_id", currentUserId)
-        .in("status", ["ON_MY_WAY", "IN_SERVICE", "COMPLETE"])
+        .in("status", ["ON_MY_WAY", "IN_SERVICE"])
         .is("payment_id", null) // Filter out orders that have already been paid
         .order("updated_at", { ascending: false });
 
