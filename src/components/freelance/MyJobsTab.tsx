@@ -502,6 +502,7 @@ const MyJobsTab = ({
 
       <ServiceManagementDialog
         key={selectedService?.service_id || "new"}
+        userRole={profile?.role}
         isOpen={!!selectedService}
         service={selectedService}
         onClose={() => setSelectedService(null)}

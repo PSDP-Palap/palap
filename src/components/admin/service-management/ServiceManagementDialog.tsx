@@ -10,12 +10,20 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
 import { useServiceStore } from "@/stores/useServiceStore";
 import type { Service, ServiceCategory } from "@/types/service";
+import type { UserRole } from "@/types/user";
 
 interface ServiceManagementDialogProps {
   isOpen: boolean;
   service: Service | null;
+  userRole?: UserRole | null;
   onClose: () => void;
   onUpdate: (
     id: string,
@@ -27,6 +35,7 @@ interface ServiceManagementDialogProps {
 export const ServiceManagementDialog = ({
   isOpen,
   service,
+  userRole,
   onClose,
   onUpdate,
   onDelete
@@ -39,6 +48,7 @@ export const ServiceManagementDialog = ({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const isFreelancer = userRole === "freelance";
 
   const [form, setForm] = useState<Omit<Service, "service_id">>({
     name: service?.name || "",
@@ -316,18 +326,21 @@ export const ServiceManagementDialog = ({
                 </div>
 
                 <div className="pt-4 flex gap-3">
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="flex-1 bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition-colors shadow-lg shadow-orange-100"
-                  >
-                    Edit Service
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-bold hover:bg-red-100 transition-colors"
-                  >
-                    Delete
-                  </button>
+                  {!isFreelancer ? (
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="flex-1 bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition-colors shadow-lg shadow-orange-100"
+                    >
+                      Edit Service
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleDelete}
+                      className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-bold hover:bg-red-100 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -364,28 +377,46 @@ export const ServiceManagementDialog = ({
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">
                       Category
                     </label>
-                    <Select
-                      value={form.category}
-                      onValueChange={(value) =>
-                        setForm((prev) => ({
-                          ...prev,
-                          category: value as ServiceCategory
-                        }))
-                      }
-                    >
-                      <SelectTrigger className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-2 h-auto text-sm focus:ring-2 focus:ring-orange-500 transition-all z-70">
-                        <SelectValue placeholder="เลือกหมวดหมู่" />
-                      </SelectTrigger>
-                      <SelectContent
-                        position="popper"
-                        sideOffset={4}
-                        className="z-80"
-                      >
-                        <SelectItem value="DELIVERY">รับ-ส่ง</SelectItem>
-                        <SelectItem value="SHOPPING">ซื้อของ</SelectItem>
-                        <SelectItem value="CARE">ดูแล</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <TooltipProvider>
+                      <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <div
+                            className={
+                              isFreelancer ? "cursor-not-allowed" : ""
+                            }
+                          >
+                            <Select
+                              value={form.category}
+                              disabled={isFreelancer}
+                              onValueChange={(value) =>
+                                setForm((prev) => ({
+                                  ...prev,
+                                  category: value as ServiceCategory
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-2 h-auto text-sm focus:ring-2 focus:ring-orange-500 transition-all z-70 disabled:cursor-not-allowed disabled:opacity-70">
+                                <SelectValue placeholder="เลือกหมวดหมู่" />
+                              </SelectTrigger>
+                              <SelectContent
+                                position="popper"
+                                sideOffset={4}
+                                className="z-80"
+                              >
+                                <SelectItem value="DELIVERY">รับ-ส่ง</SelectItem>
+                                <SelectItem value="SHOPPING">ซื้อของ</SelectItem>
+                                <SelectItem value="CARE">ดูแล</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </TooltipTrigger>
+                        {isFreelancer && (
+                          <TooltipContent>
+                            <p>Category cannot be changed after creation.</p>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 </div>
 
