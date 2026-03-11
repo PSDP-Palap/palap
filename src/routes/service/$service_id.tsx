@@ -277,7 +277,6 @@ function RouteComponent() {
 	const [sendingHireRequest, setSendingHireRequest] = useState(false);
 	const [cancelingHireRequest, setCancelingHireRequest] = useState(false);
 	const [requestLoading, setRequestLoading] = useState(false);
-	const [requestError, setRequestError] = useState<string | null>(null);
 	const [pendingHireRequests, setPendingHireRequests] = useState<
 		PendingHireRoomView[]
 	>(initialHireStatus.pendingHireRequests);
@@ -312,9 +311,6 @@ function RouteComponent() {
 		String(activeOrderTracking.serviceId) === String(service_id)
 	);
 
-	const hasAcceptedHire =
-		isHireAccepted ||
-		(isTrackingThisService && activeOrderTracking?.status !== "WAITING");
 	const hasPendingHire =
 		(isHireRequested && !isHireAccepted) ||
 		(isTrackingThisService && activeOrderTracking?.status === "WAITING");
@@ -635,7 +631,6 @@ function RouteComponent() {
 
 		try {
 			setSendingHireRequest(true);
-			setRequestError(null);
 
 			// // Check for unpaid orders
 			// const { data: unpaidOrders } = await supabase
@@ -695,7 +690,7 @@ function RouteComponent() {
 				icon: "⏳",
 			});
 		} catch (err: any) {
-			setRequestError(err.message || "Failed to send hire request");
+			toast.error(err.message || "Failed to send hire request");
 		} finally {
 			setSendingHireRequest(false);
 		}
@@ -706,7 +701,6 @@ function RouteComponent() {
 
 		try {
 			setCancelingHireRequest(true);
-			setRequestError(null);
 
 			const { data: room } = await supabase
 				.from("chat_rooms")
@@ -736,7 +730,7 @@ function RouteComponent() {
 			toast.success("Hire request canceled.");
 			await loadHireRequestData({ silent: true });
 		} catch (err: any) {
-			setRequestError(err.message || "Failed to cancel hire request");
+			toast.error(err.message || "Failed to cancel hire request");
 		} finally {
 			setCancelingHireRequest(false);
 		}
@@ -871,7 +865,6 @@ function RouteComponent() {
 			requestLoading={requestLoading}
 			canRequestHire={canRequestHire}
 			hasPendingHire={hasPendingHire}
-			hasAcceptedHire={hasAcceptedHire}
 			isServiceOwner={isServiceOwner}
 			pendingHireRequests={pendingHireRequests}
 			acceptHireRequest={acceptHireRequest}
@@ -879,7 +872,6 @@ function RouteComponent() {
 			declineHireRequest={declineHireRequest}
 			decliningRequestRoomId={decliningRequestRoomId}
 			chatError={null}
-			requestError={requestError}
 			activeOrderId={activeOrderId}
 			hasActiveOrder={hasActiveOrder}
 			isFreelancer={isFreelancer}

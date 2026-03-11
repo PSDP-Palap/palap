@@ -240,7 +240,7 @@ function JobsRoute() {
 				products.data?.map((p) => [String(p.product_id), p.name]),
 			);
 			const aMap = new Map(
-				addresses.data?.map((a) => [String(a.id), a.name || a.address]),
+				addresses.data?.map((a) => [String(a.id), a.name || a.address_detail]),
 			);
 			const doneSet = new Set(
 				messages.data

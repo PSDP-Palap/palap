@@ -30,7 +30,6 @@ interface ServiceDetailViewProps {
 	requestLoading: boolean;
 	canRequestHire: boolean;
 	hasPendingHire: boolean;
-	hasAcceptedHire: boolean;
 	isServiceOwner: boolean;
 	pendingHireRequests: PendingHireRoomView[];
 	acceptHireRequest: (request: PendingHireRoomView) => Promise<void>;
@@ -38,7 +37,6 @@ interface ServiceDetailViewProps {
 	declineHireRequest: (request: PendingHireRoomView) => Promise<void>;
 	decliningRequestRoomId: string | null;
 	chatError: string | null;
-	requestError: string | null;
 	activeOrderId: string | null;
 	hasActiveOrder: boolean;
 	isFreelancer?: boolean;
@@ -60,7 +58,6 @@ export function ServiceDetailView({
 	requestLoading,
 	canRequestHire,
 	hasPendingHire,
-	hasAcceptedHire,
 	isServiceOwner,
 	pendingHireRequests,
 	acceptHireRequest,
@@ -68,7 +65,6 @@ export function ServiceDetailView({
 	declineHireRequest,
 	decliningRequestRoomId,
 	chatError,
-	requestError,
 	hasActiveOrder,
 	isFreelancer,
 }: ServiceDetailViewProps) {

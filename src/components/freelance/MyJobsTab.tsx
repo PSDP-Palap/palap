@@ -72,8 +72,7 @@ const MyJobsTab = ({
 	error,
 	success,
 }: MyJobsTabProps) => {
-	const { profile, session } = useUserStore();
-	const currentUserId = profile?.id || session?.user?.id || null;
+	const { profile } = useUserStore();
 
 	// Management State
 	const [selectedService, setSelectedService] = useState<Service | null>(null);
