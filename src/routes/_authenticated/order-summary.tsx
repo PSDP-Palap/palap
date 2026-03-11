@@ -48,7 +48,6 @@ function RouteComponent() {
   const [displayTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
   
   const [orderNote, setOrderNote] = useState("");
-  const [promoCode, setPromoCode] = useState("");
   
   const [destinationAddressId, setDestinationAddressId] = useState<string | null>((profile as any)?.addressId || null);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
@@ -224,8 +223,8 @@ function RouteComponent() {
   const subtotal = orderRows.reduce((sum, row) => sum + row.subtotal, 0);
   const totalItems = orderRows.reduce((sum, row) => sum + row.quantity, 0);
   // Increased to 20% so 50 Baht order = 10 Baht earning
-  const deliveryFee = Math.round(subtotal * 0.20 * 100) / 100;
-  const tax = Math.round((subtotal + deliveryFee) * 0.03 * 100) / 100;
+  const deliveryFee = Math.round(subtotal * 0.20);
+  const tax = Math.round((subtotal + deliveryFee) * 0.03);
   const total = subtotal + deliveryFee + tax;
 
   const proceedToPayment = async () => {
@@ -408,24 +407,6 @@ function RouteComponent() {
                 orderRowsCount={orderRows.length}
               />
 
-              {/* Promo Code Card */}
-              <div className="bg-white rounded-[2rem] border border-orange-50 shadow-xl shadow-orange-900/5 p-6 space-y-4">
-                <div className="flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-orange-600" />
-                  <h3 className="text-[10px] font-black text-[#4A2600] uppercase tracking-widest">Apply Promo Code</h3>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={promoCode}
-                    onChange={(e) => setPromoCode(e.target.value)}
-                    placeholder="Enter code"
-                    className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2 text-sm font-bold outline-none focus:border-orange-200 transition-all uppercase placeholder:font-medium"
-                  />
-                  <button className="px-4 py-2 bg-gray-800 text-white rounded-xl text-xs font-black hover:bg-black transition-all">Apply</button>
-                </div>
-              </div>
-              
               {/* Trust & Guarantees */}
               <div className="bg-white rounded-[2rem] border border-orange-50 shadow-lg p-8 space-y-6">
                 <div className="flex items-start gap-4">

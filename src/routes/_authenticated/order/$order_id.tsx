@@ -35,7 +35,6 @@ function OrderTrackingPage() {
   const [trackingData, setTrackingData] = useState<DeliveryTracking | null>(null);
   const [freelancerCoords, setFreelancerCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showDeliveredNotice, setShowDeliveredNotice] = useState(false);
-  const [isTrackingWidgetOpen, setIsTrackingWidgetOpen] = useState(false);
 
   const lastLoadedOrderIdRef = useRef<string | null>(null);
   const previousTrackingStatusRef = useRef<string | null>(null);
@@ -130,17 +129,20 @@ function OrderTrackingPage() {
   const handlePay = async () => {
     if (!trackingData || !currentUserId || !order_id) return;
     const price = trackingData.price || 0;
-    const subtotal = price / 1.0815;
-    const deliveryFee = subtotal * 0.05;
-    const tax = (subtotal + deliveryFee) * 0.03;
+    // Back-calculate subtotal assuming original tax(3%) and delivery(20%)
+    // Price = subtotal * (1 + 0.20 + 0.03) = subtotal * 1.23
+    const subtotal = Math.round(price / 1.23);
+    const deliveryFee = Math.round(subtotal * 0.20);
+    const tax = Math.round((subtotal + deliveryFee) * 0.03);
+    const total = subtotal + deliveryFee + tax;
 
     router.navigate({
       to: "/payment",
       search: {
-        subtotal: Number(subtotal.toFixed(2)),
-        deliveryFee: Number(deliveryFee.toFixed(2)),
-        tax: Number(tax.toFixed(2)),
-        total: Number(price.toFixed(2)),
+        subtotal: subtotal,
+        deliveryFee: deliveryFee,
+        tax: tax,
+        total: total,
         order_id: order_id
       }
     });
@@ -221,8 +223,6 @@ function OrderTrackingPage() {
       pickupCoords={pickupLat && pickupLng ? { lat: pickupLat, lng: pickupLng } : null}
       destinationCoords={destinationLat && destinationLng ? { lat: destinationLat, lng: destinationLng } : null}
       freelancerCoords={freelancerCoords}
-      isTrackingWidgetOpen={isTrackingWidgetOpen}
-      setIsTrackingWidgetOpen={setIsTrackingWidgetOpen}
       showDeliveredNotice={showDeliveredNotice}
       acknowledgeDeliveredNotice={() => setShowDeliveredNotice(false)}
       loadTracking={loadTracking}

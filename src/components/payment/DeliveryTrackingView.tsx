@@ -28,8 +28,6 @@ interface DeliveryTrackingViewProps {
   pickupCoords?: { lat: number; lng: number } | null;
   destinationCoords?: { lat: number; lng: number } | null;
   freelancerCoords?: { lat: number; lng: number } | null;
-  isTrackingWidgetOpen: boolean;
-  setIsTrackingWidgetOpen: (val: boolean | ((prev: boolean) => boolean)) => void;
   showDeliveredNotice: boolean;
   acknowledgeDeliveredNotice: () => void;
   loadTracking: (id: string) => void;

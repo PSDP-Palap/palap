@@ -338,23 +338,22 @@ function RouteComponent() {
                 <div className="space-y-4 mb-8">
                   <div className="flex justify-between">
                     <span className="text-sm font-bold text-gray-500">Subtotal</span>
-                    <span className="text-sm font-black italic">฿{(detail.price / 1.0815).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-sm font-black italic">฿{Math.round(detail.price / 1.23).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm font-bold text-gray-500">Delivery Fee (5%)</span>
-                    <span className="text-sm font-black italic text-green-600">฿{((detail.price / 1.0815) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-sm font-bold text-gray-500">Delivery Fee</span>
+                    <span className="text-sm font-black italic text-green-600">฿{Math.round(Math.round(detail.price / 1.23) * 0.20).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm font-bold text-gray-500">Web Service Fee (3%)</span>
-                    <span className="text-sm font-black italic text-[#4A2600]">฿{((detail.price / 1.0815) * 1.05 * 0.03).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-sm font-black italic text-[#4A2600]">฿{Math.round((Math.round(detail.price / 1.23) + Math.round(Math.round(detail.price / 1.23) * 0.20)) * 0.03).toLocaleString()}</span>
                   </div>
                   <div className="h-px bg-orange-50" />
                   <div className="flex justify-between items-end pt-2">
                     <span className="text-xs font-black uppercase tracking-widest text-orange-600">Total Price</span>
                     <span className="text-3xl font-black italic text-[#4A2600]">฿{detail.price.toLocaleString()}</span>
                   </div>
-                </div>
-                
+                </div>                
                 <div className="p-4 rounded-2xl bg-green-50 border border-green-100 flex items-center gap-3">
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                   <p className="text-[10px] font-black text-green-700 uppercase tracking-widest">Transaction Verified</p>

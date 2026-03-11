@@ -106,7 +106,7 @@ function CheckoutComponent() {
     }, 0);
   }, [products, cartItems]);
 
-  const tax = Math.round(subtotal * 0.03 * 100) / 100;
+  const tax = Math.round(subtotal * 0.03);
   const total = subtotal + tax;
 
   const orderRows = useMemo(() => {

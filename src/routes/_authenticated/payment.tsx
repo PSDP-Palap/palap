@@ -147,12 +147,35 @@ function RouteComponent() {
   const canProceedCash = cashSubmitted;
   const canProceedByMethod =
     paymentMethod === "CARD"
-      ? canProceedCard
+      ? true // Allow clicking to show errors
       : paymentMethod === "QR"
         ? canProceedQr
         : canProceedCash;
 
-  const proceedDisabled = total <= 0 || isSubmitting || !canProceedByMethod;
+  const proceedDisabled = total <= 0 || isSubmitting || (paymentMethod !== "CARD" && !canProceedByMethod);
+
+  // Add real-time validation after first attempt or as they type
+  useEffect(() => {
+    if (cardNumber || cardholderName || cardExpiry || cardCvv) {
+      const result = cardSchema.safeParse({
+        cardNumber,
+        cardholderName,
+        cardExpiry,
+        cardCvv
+      });
+      if (!result.success) {
+        const fieldErrors: any = {};
+        result.error.issues.forEach((err) => {
+          if (err.path[0]) {
+            fieldErrors[err.path[0] as string] = err.message;
+          }
+        });
+        setCardErrors(fieldErrors);
+      } else {
+        setCardErrors({});
+      }
+    }
+  }, [cardNumber, cardholderName, cardExpiry, cardCvv]);
 
   const completePayment = async () => {
     setSubmitError(null);
