@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 import Loading from "@/components/shared/Loading";
@@ -57,9 +57,40 @@ export const ProductManagementDialog = ({
     }
   }, [isOpen, loadAddresses]);
 
-  const handleMapChange = useCallback((lat: number, lng: number) => {
-    setNewAddressForm((prev) => ({ ...prev, lat, lng }));
-  }, []);
+  const [resolvingAddress, setResolvingAddress] = useState(false);
+
+  const resolveAddressFromCoordinates = async (lat: number, lng: number) => {
+    try {
+      setResolvingAddress(true);
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      const data = await res.json();
+      return data?.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } catch {
+      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } finally {
+      setResolvingAddress(false);
+    }
+  };
+
+  const handleMapChange = async (lat: number, lng: number) => {
+    // Update coordinates immediately
+    setNewAddressForm((prev) => ({
+      ...prev,
+      lat,
+      lng,
+      address_detail: prev.address_detail || "Resolving address..."
+    }));
+
+    // Resolve address in background
+    const addressDetail = await resolveAddressFromCoordinates(lat, lng);
+    setNewAddressForm((prev) => ({
+      ...prev,
+      address_detail: addressDetail
+    }));
+  };
 
   if (!isOpen || !product) return null;
 
@@ -484,15 +515,22 @@ export const ProductManagementDialog = ({
                         className="w-full border border-white bg-white/80 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
                       />
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">
                           เลือกตำแหน่งบนแผนที่
                         </label>
-                        <MapPicker
-                          lat={product?.pickup_address?.lat}
-                          lng={product?.pickup_address?.lng}
-                          onChange={handleMapChange}
-                        />
-                        <div className="flex justify-between text-[10px] font-mono text-gray-400 px-1">
+                        <div className="h-64 rounded-2xl overflow-hidden border-2 border-orange-100 shadow-inner relative">
+                          <MapPicker
+                            lat={newAddressForm.lat || 13.7563}
+                            lng={newAddressForm.lng || 100.5018}
+                            onChange={handleMapChange}
+                          />
+                          {resolvingAddress && (
+                            <div className="absolute inset-0 bg-white/40 backdrop-blur-[2px] z-1001 flex items-center justify-center">
+                              <Loading size={32} fullScreen={false} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex justify-between text-[10px] font-mono text-gray-400 px-1 pt-1">
                           <span>Lat: {newAddressForm.lat.toFixed(6)}</span>
                           <span>Lng: {newAddressForm.lng.toFixed(6)}</span>
                         </div>

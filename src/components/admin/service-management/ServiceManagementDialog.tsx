@@ -1,8 +1,10 @@
 /* eslint-disable unused-imports/no-unused-vars */
+import { MapPin } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 import Loading from "@/components/shared/Loading";
+import MapPicker from "@/components/shared/MapPicker";
 import {
   Select,
   SelectContent,
@@ -10,12 +12,21 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
 import { useServiceStore } from "@/stores/useServiceStore";
 import type { Service, ServiceCategory } from "@/types/service";
+import type { UserRole } from "@/types/user";
+import supabase from "@/utils/supabase";
 
 interface ServiceManagementDialogProps {
   isOpen: boolean;
   service: Service | null;
+  userRole?: UserRole | null;
   onClose: () => void;
   onUpdate: (
     id: string,
@@ -27,6 +38,7 @@ interface ServiceManagementDialogProps {
 export const ServiceManagementDialog = ({
   isOpen,
   service,
+  userRole,
   onClose,
   onUpdate,
   onDelete
@@ -39,6 +51,7 @@ export const ServiceManagementDialog = ({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const isFreelancer = userRole === "freelance";
 
   const [form, setForm] = useState<Omit<Service, "service_id">>({
     name: service?.name || "",
@@ -50,6 +63,50 @@ export const ServiceManagementDialog = ({
     detail_1: service?.detail_1 || "",
     detail_2: service?.detail_2 || ""
   });
+
+  const [pickupAddress, setPickupAddress] = useState<{
+    lat: number;
+    lng: number;
+    name: string;
+    address_detail: string;
+  } | null>(null);
+  const [loadingAddress, setLoadingAddress] = useState(false);
+  const [resolvingAddress, setResolvingAddress] = useState(false);
+
+  // Fetch address details
+  useEffect(() => {
+    const fetchAddress = async () => {
+      if (service?.pickup_address_id) {
+        setLoadingAddress(true);
+        try {
+          const { data } = await supabase
+            .from("addresses")
+            .select("*")
+            .eq("id", service.pickup_address_id)
+            .single();
+
+          if (data) {
+            setPickupAddress({
+              lat: Number(data.lat),
+              lng: Number(data.lng),
+              name: data.name || "",
+              address_detail: data.address_detail || ""
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching address:", error);
+        } finally {
+          setLoadingAddress(false);
+        }
+      } else {
+        setPickupAddress(null);
+      }
+    };
+
+    if (isOpen && service) {
+      fetchAddress();
+    }
+  }, [isOpen, service]);
 
   // Update form when service changes
   useEffect(() => {
@@ -101,6 +158,40 @@ export const ServiceManagementDialog = ({
     setPreviewUrl(url);
   };
 
+  const handleMapChange = async (lat: number, lng: number) => {
+    // 1. Update coordinates immediately for responsive UI
+    setPickupAddress((prev) => ({
+      lat,
+      lng,
+      name: prev?.name || "Pickup Point",
+      address_detail: prev?.address_detail || "Resolving address..."
+    }));
+
+    // 2. Resolve address in background
+    try {
+      setResolvingAddress(true);
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      const data = await res.json();
+      const addressName =
+        data?.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+      setPickupAddress((prev) => {
+        if (!prev || (prev.lat !== lat && prev.lng !== lng)) return prev;
+        return {
+          ...prev,
+          address_detail: addressName
+        };
+      });
+    } catch (error) {
+      console.error("Geocoding error:", error);
+    } finally {
+      setResolvingAddress(false);
+    }
+  };
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     const loadingToast = toast.loading("กำลังบันทึกข้อมูล...");
@@ -112,12 +203,49 @@ export const ServiceManagementDialog = ({
         finalImageUrl = await uploadServiceImage(selectedFile);
       }
 
-      // Clean data: convert empty strings to null for UUID fields
+      // 1. Update or Create Address if modified
+      let finalPickupAddressId = form.pickup_address_id;
+      if (pickupAddress) {
+        if (finalPickupAddressId) {
+          // Update existing address
+          await supabase
+            .from("addresses")
+            .update({
+              lat: pickupAddress.lat,
+              lng: pickupAddress.lng,
+              name: pickupAddress.name,
+              address_detail: pickupAddress.address_detail
+            })
+            .eq("id", finalPickupAddressId);
+        } else {
+          // Create new address
+          const { data: newAddr, error: addrErr } = await supabase
+            .from("addresses")
+            .insert([
+              {
+                lat: pickupAddress.lat,
+                lng: pickupAddress.lng,
+                name: pickupAddress.name,
+                address_detail: pickupAddress.address_detail
+              }
+            ])
+            .select("id")
+            .single();
+
+          if (addrErr) throw addrErr;
+          finalPickupAddressId = newAddr.id;
+        }
+      }
+
+      // 2. Update Service
       const updateData = {
         ...form,
         image_url: finalImageUrl,
-        pickup_address_id: form.pickup_address_id?.trim() === "" ? null : form.pickup_address_id,
-        destination_address_id: form.destination_address_id?.trim() === "" ? null : form.destination_address_id,
+        pickup_address_id: finalPickupAddressId,
+        destination_address_id:
+          form.destination_address_id?.trim() === ""
+            ? null
+            : form.destination_address_id
       };
 
       await onUpdate(service.service_id!, updateData);
@@ -125,9 +253,12 @@ export const ServiceManagementDialog = ({
       setIsEditing(false);
       setSelectedFile(null);
       onClose();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error("Update error:", error);
-      toast.error(error?.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล", { id: loadingToast });
+      toast.error(error?.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล", {
+        id: loadingToast
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -160,7 +291,7 @@ export const ServiceManagementDialog = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm font-sans overflow-y-auto">
+    <div className="fixed inset-0 z-110 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm font-sans overflow-y-auto">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg animate-in fade-in zoom-in duration-200 my-auto relative">
         {/* Close Button */}
         <button
@@ -297,6 +428,25 @@ export const ServiceManagementDialog = ({
                   </span>
                 </div>
 
+                {pickupAddress && (
+                  <div className="border-b border-gray-50 pb-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                      Pickup Location
+                    </label>
+                    <div className="flex items-start gap-2 mt-1">
+                      <MapPin className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">
+                          {pickupAddress.name || "Main Location"}
+                        </p>
+                        <p className="text-xs text-gray-500 line-clamp-2">
+                          {pickupAddress.address_detail}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="border-b border-gray-50 pb-2">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">
                     Detail 1
@@ -316,18 +466,21 @@ export const ServiceManagementDialog = ({
                 </div>
 
                 <div className="pt-4 flex gap-3">
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="flex-1 bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition-colors shadow-lg shadow-orange-100"
-                  >
-                    Edit Service
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-bold hover:bg-red-100 transition-colors"
-                  >
-                    Delete
-                  </button>
+                  {!isFreelancer ? (
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="flex-1 bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition-colors shadow-lg shadow-orange-100"
+                    >
+                      Edit Service
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleDelete}
+                      className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-bold hover:bg-red-100 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -364,28 +517,89 @@ export const ServiceManagementDialog = ({
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">
                       Category
                     </label>
-                    <Select
-                      value={form.category}
-                      onValueChange={(value) =>
-                        setForm((prev) => ({
-                          ...prev,
-                          category: value as ServiceCategory
-                        }))
-                      }
-                    >
-                      <SelectTrigger className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-2 h-auto text-sm focus:ring-2 focus:ring-orange-500 transition-all z-70">
-                        <SelectValue placeholder="เลือกหมวดหมู่" />
-                      </SelectTrigger>
-                      <SelectContent
-                        position="popper"
-                        sideOffset={4}
-                        className="z-80"
-                      >
-                        <SelectItem value="DELIVERY">รับ-ส่ง</SelectItem>
-                        <SelectItem value="SHOPPING">ซื้อของ</SelectItem>
-                        <SelectItem value="CARE">ดูแล</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <TooltipProvider>
+                      <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <div
+                            className={isFreelancer ? "cursor-not-allowed" : ""}
+                          >
+                            <Select
+                              value={form.category}
+                              disabled={isFreelancer}
+                              onValueChange={(value) =>
+                                setForm((prev) => ({
+                                  ...prev,
+                                  category: value as ServiceCategory
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="w-full border border-gray-100 bg-gray-50 rounded-xl px-4 py-2 h-auto text-sm focus:ring-2 focus:ring-orange-500 transition-all z-70 disabled:cursor-not-allowed disabled:opacity-70">
+                                <SelectValue placeholder="เลือกหมวดหมู่" />
+                              </SelectTrigger>
+                              <SelectContent
+                                position="popper"
+                                sideOffset={4}
+                                className="z-80"
+                              >
+                                <SelectItem value="DELIVERY">
+                                  รับ-ส่ง
+                                </SelectItem>
+                                <SelectItem value="SHOPPING">
+                                  ซื้อของ
+                                </SelectItem>
+                                <SelectItem value="CARE">ดูแล</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </TooltipTrigger>
+                        {isFreelancer && (
+                          <TooltipContent>
+                            <p>Category cannot be changed after creation.</p>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+
+                {/* Map Picker Area */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center px-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      Pickup Location
+                    </label>
+                  </div>
+                  <div className="h-64 rounded-2xl overflow-hidden border-2 border-orange-50 relative">
+                    {loadingAddress ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+                        <Loading fullScreen={false} size={40} />
+                      </div>
+                    ) : (
+                      <>
+                        <MapPicker
+                          lat={pickupAddress?.lat || 13.7563}
+                          lng={pickupAddress?.lng || 100.5018}
+                          onChange={handleMapChange}
+                        />
+                        {resolvingAddress && (
+                          <div className="absolute inset-0 bg-white/40 backdrop-blur-[2px] z-1001 flex items-center justify-center">
+                            <Loading size={32} fullScreen={false} />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="bg-orange-50/50 p-3 rounded-xl border border-orange-100">
+                    <div className="flex items-center gap-2 mb-1">
+                      <MapPin className="w-3 h-3 text-orange-600" />
+                      <span className="text-[10px] font-black text-orange-800 uppercase tracking-widest">
+                        Selected Address
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-gray-700 leading-relaxed line-clamp-2">
+                      {pickupAddress?.address_detail ||
+                        "Please select a location on the map"}
+                    </p>
                   </div>
                 </div>
 

@@ -4,11 +4,11 @@ import AccountSettingTab from "@/components/freelance/AccountSettingTab";
 import { useUserStore } from "@/stores/useUserStore";
 
 export const Route = createFileRoute("/_freelance/freelance/account")({
-  component: AccountRoute
+	component: AccountRoute,
 });
 
 function AccountRoute() {
-  const { profile, session } = useUserStore();
+	const { profile, session } = useUserStore();
 
-  return <AccountSettingTab profile={profile} session={session} />;
+	return <AccountSettingTab profile={profile} session={session} />;
 }

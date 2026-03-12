@@ -9,33 +9,33 @@ import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
 
 export const Route = createRootRoute({
-  component: RootLayout
+	component: RootLayout,
 });
 
 function RootLayout() {
-  const { isLoading, initialize, profile } = useUserStore();
-  const role = String(profile?.role || "").toLowerCase();
-  const isAdmin = role === "admin";
-  const isCustomer = role === "customer";
-  const isFreelance = role === "freelance";
+	const { isLoading, initialize, profile } = useUserStore();
+	const role = String(profile?.role || "").toLowerCase();
+	const isAdmin = role === "admin";
+	const isCustomer = role === "customer";
+	const isFreelance = role === "freelance";
 
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
+	useEffect(() => {
+		initialize();
+	}, [initialize]);
 
-  if (isLoading) {
-    return <Loading />;
-  }
+	if (isLoading) {
+		return <Loading />;
+	}
 
-  return (
-    <>
-      <Toaster position="bottom-right" reverseOrder={false} />
-      {!isAdmin && <Navbar />}
-      <main>
-        <Outlet />
-      </main>
-      {(isCustomer || isFreelance) && <FloatingChatWidget />}
-      <TanStackRouterDevtools />
-    </>
-  );
+	return (
+		<>
+			<Toaster position="bottom-right" reverseOrder={false} />
+			{!isAdmin && <Navbar />}
+			<main>
+				<Outlet />
+			</main>
+			{(isCustomer || isFreelance) && <FloatingChatWidget />}
+			<TanStackRouterDevtools />
+		</>
+	);
 }

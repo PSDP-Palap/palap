@@ -6,297 +6,336 @@ import type { Profile, UserRole } from "@/types/user";
 import supabase from "@/utils/supabase";
 
 interface UserState {
-  session: Session | null;
-  profile: Profile | null;
-  isLoading: boolean;
-  isInitialized: boolean;
-  lastSessionUserId: string | null; // Track the last user ID we processed
+	session: Session | null;
+	profile: Profile | null;
+	isLoading: boolean;
+	isInitialized: boolean;
+	lastSessionUserId: string | null; // Track the last user ID we processed
 
-  setSession: (session: Session | null) => void;
-  setProfile: (profile: Profile | null) => void;
-  fetchProfile: () => Promise<Profile | null>;
-  initialize: () => Promise<void>;
-  updateProfile: (updates: Partial<Profile & { lat?: number | null; lng?: number | null; name?: string }>) => Promise<{ error: any }>;
-  signOut: () => Promise<void>;
+	setSession: (session: Session | null) => void;
+	setProfile: (profile: Profile | null) => void;
+	fetchProfile: () => Promise<Profile | null>;
+	initialize: () => Promise<void>;
+	updateProfile: (
+		updates: Partial<
+			Profile & { lat?: number | null; lng?: number | null; name?: string }
+		>,
+	) => Promise<{ error: any }>;
+	signOut: () => Promise<void>;
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
-  session: null,
-  profile: null,
-  isLoading: true,
-  isInitialized: false,
-  lastSessionUserId: null,
+	session: null,
+	profile: null,
+	isLoading: true,
+	isInitialized: false,
+	lastSessionUserId: null,
 
-  setSession: (session) => set({ session }),
-  setProfile: (profile) => set({ profile }),
+	setSession: (session) => set({ session }),
+	setProfile: (profile) => set({ profile }),
 
-  fetchProfile: async () => {
-    try {
-      const {
-        data: { session }
-      } = await supabase.auth.getSession();
+	fetchProfile: async () => {
+		try {
+			const {
+				data: { session },
+			} = await supabase.auth.getSession();
 
-      if (!session) {
-        set({ session: null, profile: null, lastSessionUserId: null });
-        return null;
-      }
+			if (!session) {
+				set({ session: null, profile: null, lastSessionUserId: null });
+				return null;
+			}
 
-      const userId = session.user.id;
-      set({ session, lastSessionUserId: userId });
+			const userId = session.user.id;
+			set({ session, lastSessionUserId: userId });
 
-      const roleFromMeta = session.user.app_metadata?.role as UserRole;
+			const roleFromMeta = session.user.app_metadata?.role as UserRole;
 
-      if (roleFromMeta === "admin") {
-        const adminProfile: Profile = {
-          id: userId,
-          email: session.user.email || "",
-          full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.display_name || "Admin",
-          role: "admin",
-          phone_number: null,
-          created_at: session.user.created_at,
-          address: null
-        };
-        set({ profile: adminProfile });
-        return adminProfile;
-      }
+			if (roleFromMeta === "admin") {
+				const adminProfile: Profile = {
+					id: userId,
+					email: session.user.email || "",
+					full_name:
+						session.user.user_metadata?.full_name ||
+						session.user.user_metadata?.display_name ||
+						"Admin",
+					role: "admin",
+					phone_number: null,
+					created_at: session.user.created_at,
+					address: null,
+				};
+				set({ profile: adminProfile });
+				return adminProfile;
+			}
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
+			const { data: profile } = await supabase
+				.from("profiles")
+				.select("*")
+				.eq("id", userId)
+				.maybeSingle();
 
-      let address = null;
-      let lat = null;
-      let lng = null;
-      let addressId = null;
-      let addressName = null;
-      if (profile?.role === "customer") {
-        const { data: customer } = await supabase
-          .from("customers")
-          .select("address_id, addresses:address_id(id, address_detail, lat, lng, name)")
-          .eq("id", userId)
-          .maybeSingle();
-        
-        const addrData = (customer?.addresses as any);
-        addressId = addrData?.id || null;
-        address = addrData?.address_detail || null;
-        lat = addrData?.lat || null;
-        lng = addrData?.lng || null;
-        addressName = addrData?.name || "Home";
-      }
+			let address = null;
+			let lat = null;
+			let lng = null;
+			let addressId = null;
+			let addressName = null;
+			let freelanceData = null;
 
-      const finalProfile = profile
-        ? ({
-          ...profile,
-          role: roleFromMeta || profile.role,
-          address,
-          lat,
-          lng,
-          addressId,
-          addressName
-        } as Profile & { addressId?: string | null; addressName?: string | null })
-        : ({
-          id: userId,
-          email: session.user.email || "",
-          full_name: session.user.user_metadata?.full_name || "",
-          role: roleFromMeta || "customer",
-          phone_number: null,
-          created_at: session.user.created_at || new Date().toISOString(),
-          address: null,
-          lat: null,
-          lng: null,
-          addressId: null,
-          addressName: null
-        } as Profile & { addressId?: string | null; addressName?: string | null });
+			if (profile?.role === "customer") {
+				const { data: customer } = await supabase
+					.from("customers")
+					.select(
+						"address_id, addresses:address_id(id, address_detail, lat, lng, name)",
+					)
+					.eq("id", userId)
+					.maybeSingle();
 
-      set({ profile: finalProfile });
-      return finalProfile;
-    } catch (error) {
-      console.error("fetchProfile failed:", error);
-      return null;
-    }
-  },
+				const addrData = customer?.addresses as any;
+				addressId = addrData?.id || null;
+				address = addrData?.address_detail || null;
+				lat = addrData?.lat || null;
+				lng = addrData?.lng || null;
+				addressName = addrData?.name || "Home";
+			} else if (profile?.role === "freelance") {
+				const { data: freelance } = await supabase
+					.from("freelances")
+					.select("*")
+					.eq("id", userId)
+					.maybeSingle();
+				freelanceData = freelance;
+			}
 
-  initialize: async () => {
-    if (get().isInitialized) return;
+			const finalProfile = profile
+				? ({
+						...profile,
+						role: roleFromMeta || profile.role,
+						address,
+						lat,
+						lng,
+						addressId,
+						addressName,
+						...(freelanceData || {}),
+					} as Profile & {
+						addressId?: string | null;
+						addressName?: string | null;
+						status?: string;
+						job_category?: string;
+						bio?: string;
+					})
+				: ({
+						id: userId,
+						email: session.user.email || "",
+						full_name: session.user.user_metadata?.full_name || "",
+						role: roleFromMeta || "customer",
+						phone_number: null,
+						created_at: session.user.created_at || new Date().toISOString(),
+						address: null,
+						lat: null,
+						lng: null,
+						addressId: null,
+						addressName: null,
+					} as Profile & {
+						addressId?: string | null;
+						addressName?: string | null;
+					});
 
-    try {
-      // 1. Initial fetch
-      await get().fetchProfile();
-    } catch (error) {
-      console.error("[UserStore] User initialization failed catastrophically:", error);
-    } finally {
-      set({ isLoading: false, isInitialized: true });
-    }
+			set({ profile: finalProfile });
+			return finalProfile;
+		} catch (error) {
+			console.error("fetchProfile failed:", error);
+			return null;
+		}
+	},
 
-    // 2. Setup Auth Listener with deduplication logic
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      const currentUserId = session?.user?.id || null;
-      const lastUserId = get().lastSessionUserId;
+	initialize: async () => {
+		if (get().isInitialized) return;
 
-      // Deduplication Logic:
-      // Skip if it's a SIGNED_IN/INITIAL_SESSION event for the same user we already loaded
-      // Unless it's a USER_UPDATED event which might mean metadata changed
-      if (
-        (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
-        currentUserId === lastUserId &&
-        get().profile
-      ) {
-        console.log("[UserStore] Skipping redundant auth event");
-        set({ session });
-        return;
-      }
+		try {
+			// 1. Initial fetch
+			await get().fetchProfile();
+		} catch (error) {
+			console.error(
+				"[UserStore] User initialization failed catastrophically:",
+				error,
+			);
+		} finally {
+			set({ isLoading: false, isInitialized: true });
+		}
 
-      if (
-        event === "SIGNED_IN" ||
-        event === "USER_UPDATED" ||
-        event === "TOKEN_REFRESHED" ||
-        event === "INITIAL_SESSION"
-      ) {
-        if (session) {
-          // Cleanup URL hash if it contains auth tokens (e.g. after email confirmation redirect)
-          if (
-            typeof window !== "undefined" &&
-            window.location.hash.includes("access_token=")
-          ) {
-            window.history.replaceState(
-              null,
-              document.title,
-              window.location.pathname + window.location.search
-            );
-          }
+		// 2. Setup Auth Listener with deduplication logic
+		supabase.auth.onAuthStateChange(async (event, session) => {
+			const currentUserId = session?.user?.id || null;
+			const lastUserId = get().lastSessionUserId;
 
-          // If token refreshed but user is the same, just update session object
-          if (event === "TOKEN_REFRESHED" && currentUserId === lastUserId) {
-            set({ session });
-            return;
-          }
+			// Deduplication Logic:
+			// Skip if it's a SIGNED_IN/INITIAL_SESSION event for the same user we already loaded
+			// Unless it's a USER_UPDATED event which might mean metadata changed
+			if (
+				(event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
+				currentUserId === lastUserId &&
+				get().profile
+			) {
+				console.log("[UserStore] Skipping redundant auth event");
+				set({ session });
+				return;
+			}
 
-          await get().fetchProfile();
-        }
-      } else if (event === "SIGNED_OUT") {
-        set({ session: null, profile: null, lastSessionUserId: null });
-      }
-    });
-  },
+			if (
+				event === "SIGNED_IN" ||
+				event === "USER_UPDATED" ||
+				event === "TOKEN_REFRESHED" ||
+				event === "INITIAL_SESSION"
+			) {
+				if (session) {
+					// Cleanup URL hash if it contains auth tokens (e.g. after email confirmation redirect)
+					if (
+						typeof window !== "undefined" &&
+						window.location.hash.includes("access_token=")
+					) {
+						window.history.replaceState(
+							null,
+							document.title,
+							window.location.pathname + window.location.search,
+						);
+					}
 
-  updateProfile: async (updates: Partial<Profile & { lat?: number | null; lng?: number | null; name?: string }>) => {
-    const { profile } = get();
-    if (!profile) return { error: "No profile found" };
+					// If token refreshed but user is the same, just update session object
+					if (event === "TOKEN_REFRESHED" && currentUserId === lastUserId) {
+						set({ session });
+						return;
+					}
 
-    const { full_name, phone_number, address, lat, lng, name } = updates;
-    console.log("Updating profile for ID:", profile.id, "with updates:", updates);
+					await get().fetchProfile();
+				}
+			} else if (event === "SIGNED_OUT") {
+				set({ session: null, profile: null, lastSessionUserId: null });
+			}
+		});
+	},
 
-    // 1. Update profiles table - only if full_name or phone_number is provided
-    if (full_name !== undefined || phone_number !== undefined) {
-      const profilePayload: any = {};
-      if (full_name !== undefined) profilePayload.full_name = full_name;
-      if (phone_number !== undefined) profilePayload.phone_number = phone_number;
+	updateProfile: async (
+		updates: Partial<
+			Profile & { lat?: number | null; lng?: number | null; name?: string }
+		>,
+	) => {
+		const { profile } = get();
+		if (!profile) return { error: "No profile found" };
 
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update(profilePayload)
-        .eq("id", profile.id);
+		const { full_name, phone_number, address, lat, lng, name } = updates;
+		console.log(
+			"Updating profile for ID:",
+			profile.id,
+			"with updates:",
+			updates,
+		);
 
-      if (profileError) {
-        console.error("Error updating profiles table:", profileError);
-        return { error: profileError };
-      }
-    }
+		// 1. Update profiles table - only if full_name or phone_number is provided
+		if (full_name !== undefined || phone_number !== undefined) {
+			const profilePayload: any = {};
+			if (full_name !== undefined) profilePayload.full_name = full_name;
+			if (phone_number !== undefined)
+				profilePayload.phone_number = phone_number;
 
-    // 2. Update customers and addresses table if role is customer
-    if (profile.role === "customer") {
-      console.log("Updating customer address for ID:", profile.id);
+			const { error: profileError } = await supabase
+				.from("profiles")
+				.update(profilePayload)
+				.eq("id", profile.id);
 
-      let addressId = (profile as any).addressId;
+			if (profileError) {
+				console.error("Error updating profiles table:", profileError);
+				return { error: profileError };
+			}
+		}
 
-      // Check if customer already has an address_id if store doesn't have it
-      if (!addressId) {
-        const { data: customerData } = await supabase
-          .from("customers")
-          .select("address_id")
-          .eq("id", profile.id)
-          .maybeSingle();
-        addressId = customerData?.address_id;
-      }
+		// 2. Update customers and addresses table if role is customer
+		if (profile.role === "customer") {
+			console.log("Updating customer address for ID:", profile.id);
 
-      // Prepare address payload - only include provided fields or keep existing ones
-      const currentAddressName = name || (profile as any).addressName || "Home";
-      const addressPayload: any = {
-        name: currentAddressName,
-        profile_id: profile.id
-      };
-      
-      if (address !== undefined) addressPayload.address_detail = address;
-      if (lat !== undefined) addressPayload.lat = lat;
-      if (lng !== undefined) addressPayload.lng = lng;
+			let addressId = (profile as any).addressId;
 
-      if (addressId) {
-        // Update existing address
-        const { error: addrError } = await supabase
-          .from("addresses")
-          .update(addressPayload)
-          .eq("id", addressId);
-        
-        if (addrError) console.error("Error updating address:", addrError);
-      } else if (address || (lat !== undefined && lng !== undefined)) {
-        // Create new address
-        const { data: newAddr, error: addrError } = await supabase
-          .from("addresses")
-          .insert([addressPayload])
-          .select("id")
-          .single();
-        
-        if (addrError) {
-          console.error("Error creating address:", addrError);
-        } else {
-          addressId = newAddr.id;
-        }
-      }
+			// Check if customer already has an address_id if store doesn't have it
+			if (!addressId) {
+				const { data: customerData } = await supabase
+					.from("customers")
+					.select("address_id")
+					.eq("id", profile.id)
+					.maybeSingle();
+				addressId = customerData?.address_id;
+			}
 
-      // Upsert customer record with address_id
-      const { error: customerError } = await supabase
-        .from("customers")
-        .upsert({
-          id: profile.id,
-          address_id: addressId,
-          updated_at: new Date().toISOString()
-        });
+			// Prepare address payload - only include provided fields or keep existing ones
+			const currentAddressName = name || (profile as any).addressName || "Home";
+			const addressPayload: any = {
+				name: currentAddressName,
+				profile_id: profile.id,
+			};
 
-      if (customerError) {
-        console.error("Error updating customers table:", customerError);
-        return { error: customerError };
-      }
-      
-      // Update local state for customer
-      const newProfile = { 
-        ...profile, 
-        ...updates, 
-        addressId: addressId, 
-        addressName: currentAddressName 
-      };
-      set({ profile: newProfile });
-    } else {
-      // Update local state for non-customers
-      set({ profile: { ...profile, ...updates } });
-    }
+			if (address !== undefined) addressPayload.address_detail = address;
+			if (lat !== undefined) addressPayload.lat = lat;
+			if (lng !== undefined) addressPayload.lng = lng;
 
-    console.log("Profile updated successfully in store and Supabase");
-    return { error: null };
-  },
-  signOut: async () => {
-    await supabase.auth.signOut();
-    
-    // Clear cart on logout
-    try {
-      const { useCartStore } = await import("./useCartStore");
-      useCartStore.getState().clear();
-    } catch (e) {
-      console.error("Failed to clear cart during logout:", e);
-    }
+			if (addressId) {
+				// Update existing address
+				const { error: addrError } = await supabase
+					.from("addresses")
+					.update(addressPayload)
+					.eq("id", addressId);
 
-    set({ session: null, profile: null, lastSessionUserId: null });
-    toast.success("Signed out successfully");
-  }
+				if (addrError) console.error("Error updating address:", addrError);
+			} else if (address || (lat !== undefined && lng !== undefined)) {
+				// Create new address
+				const { data: newAddr, error: addrError } = await supabase
+					.from("addresses")
+					.insert([addressPayload])
+					.select("id")
+					.single();
+
+				if (addrError) {
+					console.error("Error creating address:", addrError);
+				} else {
+					addressId = newAddr.id;
+				}
+			}
+
+			// Upsert customer record with address_id
+			const { error: customerError } = await supabase.from("customers").upsert({
+				id: profile.id,
+				address_id: addressId,
+				updated_at: new Date().toISOString(),
+			});
+
+			if (customerError) {
+				console.error("Error updating customers table:", customerError);
+				return { error: customerError };
+			}
+
+			// Update local state for customer
+			const newProfile = {
+				...profile,
+				...updates,
+				addressId: addressId,
+				addressName: currentAddressName,
+			};
+			set({ profile: newProfile });
+		} else {
+			// Update local state for non-customers
+			set({ profile: { ...profile, ...updates } });
+		}
+
+		console.log("Profile updated successfully in store and Supabase");
+		return { error: null };
+	},
+	signOut: async () => {
+		await supabase.auth.signOut();
+
+		// Clear cart on logout
+		try {
+			const { useCartStore } = await import("./useCartStore");
+			useCartStore.getState().clear();
+		} catch (e) {
+			console.error("Failed to clear cart during logout:", e);
+		}
+
+		set({ session: null, profile: null, lastSessionUserId: null });
+		toast.success("Signed out successfully");
+	},
 }));

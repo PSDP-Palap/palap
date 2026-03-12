@@ -104,13 +104,12 @@ function RouteComponent() {
   return (
     <div className="min-h-screen bg-[#FDFCFB] font-sans pb-32">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28">
-        {/* Banner Section */}
         <div className="relative rounded-[2.5rem] bg-linear-to-r from-[#FF914D] to-[#FF7F32] overflow-hidden shadow-2xl shadow-orange-900/20 mb-12 group">
           <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10" />
           <div className="relative z-10 p-8 md:p-12 flex flex-col md:flex-row items-center justify-between">
             <div className="text-center md:text-left space-y-4 max-w-lg">
               <span className="px-4 py-1.5 rounded-full bg-white/20 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-[0.2em] border border-white/30">
-                New Season 2024
+                New Season 2026
               </span>
               <h1 className="text-4xl md:text-6xl font-black text-white leading-tight">
                 PREMIUM <span className="text-[#4A2600]">PET CARE</span>{" "}

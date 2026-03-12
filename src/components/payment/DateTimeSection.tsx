@@ -1,25 +1,53 @@
+import { Calendar, Clock } from "lucide-react";
+
 interface DateTimeSectionProps {
-  displayDate: string;
-  displayTime: string;
+  appointmentDate: string;
+  setAppointmentDate: (date: string) => void;
+  appointmentTime: string;
+  setAppointmentTime: (time: string) => void;
 }
 
 export function DateTimeSection({
-  displayDate,
-  displayTime,
+  appointmentDate,
+  setAppointmentDate,
+  appointmentTime,
+  setAppointmentTime
 }: DateTimeSectionProps) {
   return (
-    <section className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-      <h2 className="text-lg font-black text-[#4A2600] mb-3">Date & Time</h2>
-      <div className="space-y-2 text-sm">
-        <div className="flex items-center justify-between">
-          <p className="text-gray-500">Date</p>
-          <p className="font-semibold text-[#4A2600]">{displayDate}</p>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-orange-600" />
+          <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">
+            Appointment Date
+          </h3>
         </div>
-        <div className="flex items-center justify-between">
-          <p className="text-gray-500">Time</p>
-          <p className="font-semibold text-[#4A2600]">{displayTime}</p>
+        <div className="relative group">
+          <input
+            type="date"
+            value={appointmentDate}
+            onChange={(e) => setAppointmentDate(e.target.value)}
+            className="w-full bg-orange-50/30 border border-orange-100 rounded-2xl p-4 text-sm font-bold text-[#4A2600] outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-300 transition-all cursor-pointer"
+          />
         </div>
       </div>
-    </section>
+
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-orange-600" />
+          <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">
+            Appointment Time
+          </h3>
+        </div>
+        <div className="relative group">
+          <input
+            type="time"
+            value={appointmentTime}
+            onChange={(e) => setAppointmentTime(e.target.value)}
+            className="w-full bg-orange-50/30 border border-orange-100 rounded-2xl p-4 text-sm font-bold text-[#4A2600] outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-300 transition-all cursor-pointer"
+          />
+        </div>
+      </div>
+    </div>
   );
 }

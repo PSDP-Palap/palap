@@ -20,9 +20,16 @@ export const Route = createFileRoute("/_freelance/freelance/jobs")({
 });
 
 function JobsRoute() {
-  const { profile, session } = useUserStore();
+  const { profile, session, fetchProfile } = useUserStore();
   const { uploadServiceImage } = useServiceStore();
   const currentUserId = profile?.id || session?.user?.id || null;
+
+  // Sync profile/status on mount
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchProfile();
+    }
+  }, [session?.user?.id, fetchProfile]);
 
   const [services, setServices] = useState<Service[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
@@ -57,7 +64,6 @@ function JobsRoute() {
   const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const loadMyServices = useCallback(async () => {
     if (!currentUserId) return;
@@ -84,54 +90,37 @@ function JobsRoute() {
       setCreating(true);
       setError(null);
 
-      let pickupAddressId = null;
-      let destinationAddressId = null;
-
-      // Create pickup address if provided
-      if (formData.pickupAddress) {
-        const { data: pAddr, error: pError } = await supabase
-          .from("addresses")
-          .insert({
-            name: formData.pickupAddress,
-            address_detail: formData.pickupAddress,
-            is_public: true
-          })
-          .select("id")
-          .single();
-        if (pError) throw pError;
-        pickupAddressId = pAddr.id;
-      }
-
-      // Create destination address if provided
-      if (formData.destinationAddress) {
-        const { data: dAddr, error: dError } = await supabase
-          .from("addresses")
-          .insert({
-            name: formData.destinationAddress,
-            address_detail: formData.destinationAddress,
-            is_public: true
-          })
-          .select("id")
-          .single();
-        if (dError) throw dError;
-        destinationAddressId = dAddr.id;
+      // 1. Upload image if provided
+      let finalImageUrl = "";
+      if (formData.imageFile) {
+        try {
+          finalImageUrl = await uploadServiceImage(formData.imageFile);
+        } catch (uploadErr) {
+          console.error("Image upload failed:", uploadErr);
+          throw new Error("Failed to upload service image.", {
+            cause: uploadErr
+          });
+        }
       }
 
       const payload = {
         name: formData.name,
         price: Number(formData.price),
         category: formData.category,
-        pickup_address_id: pickupAddressId,
-        destination_address_id: destinationAddressId,
-        image_url: formData.image_url,
+        pickup_address_id: null,
+        destination_address_id: null,
+        detail_1: formData.pickupAddress || "",
+        detail_2: formData.destinationAddress || "",
+        image_url: finalImageUrl,
         created_by: currentUserId
       };
       const { error } = await supabase.from("services").insert([payload]);
       if (error) throw error;
-      setSuccess("Service created successfully!");
+      toast.success("Service created successfully!");
       await loadMyServices();
     } catch (err: any) {
       setError(err?.message || "Unable to create service.");
+      toast.error(err?.message || "Unable to create service.");
     } finally {
       setCreating(false);
     }
@@ -150,7 +139,9 @@ function JobsRoute() {
           finalImageUrl = await uploadServiceImage(formData.imageFile);
         } catch (uploadErr) {
           console.error("Image upload failed:", uploadErr);
-          throw new Error("Failed to upload service image.");
+          throw new Error("Failed to upload service image.", {
+            cause: uploadErr
+          });
         }
       }
 
@@ -238,7 +229,7 @@ function JobsRoute() {
         addressIds.length
           ? supabase
               .from("addresses")
-              .select("id, name, address")
+              .select("id, name, address_detail, lat, lng")
               .in("id", addressIds)
           : { data: [] },
         orderIds.length
@@ -259,7 +250,14 @@ function JobsRoute() {
         products.data?.map((p) => [String(p.product_id), p.name])
       );
       const aMap = new Map(
-        addresses.data?.map((a) => [String(a.id), a.name || a.address])
+        addresses.data?.map((a) => [
+          String(a.id),
+          {
+            label: a.address_detail || a.name || "Location",
+            lat: a.lat,
+            lng: a.lng
+          }
+        ])
       );
       const doneSet = new Set(
         messages.data
@@ -272,22 +270,32 @@ function JobsRoute() {
 
       const normalized: DeliveryOrderItem[] = orders
         .filter((o) => !!o.product_id) // Only delivery orders have product_id in this context
-        .map((o) => ({
-          orderId: String(o.order_id),
-          customerId: String(o.customer_id || ""),
-          customerName: pMap.get(String(o.customer_id)) || "Customer",
-          productName: prMap.get(String(o.product_id)) || "Order",
-          pickupLabel: aMap.get(String(o.pickup_address_id)) || "Pickup",
-          destinationLabel:
-            aMap.get(String(o.destination_address_id)) || "Destination",
-          price: Number(o.price || 0),
-          status: String(o.status || "WAITING"),
-          freelancer_id: o.freelancer_id,
-          freelance_id: o.freelance_id
-        }));
+        .map((o) => {
+          const pickup = aMap.get(String(o.pickup_address_id));
+          const dest = aMap.get(String(o.destination_address_id));
+          return {
+            orderId: String(o.order_id),
+            customerId: String(o.customer_id || ""),
+            customerName: pMap.get(String(o.customer_id)) || "Customer",
+            productName: prMap.get(String(o.product_id)) || "Order",
+            pickupLabel: pickup?.label || "Pickup",
+            pickupLat: pickup?.lat,
+            pickupLng: pickup?.lng,
+            destinationLabel: dest?.label || "Destination",
+            destinationLat: dest?.lat,
+            destinationLng: dest?.lng,
+            price: Number(o.price || 0),
+            status: String(o.status || "WAITING"),
+            appointmentAt: o.appointment_at,
+            freelancer_id: o.freelancer_id,
+            freelance_id: o.freelance_id
+          };
+        });
 
       setAvailableDeliveryOrders(
-        normalized.filter((o) => !o.status || o.status === "WAITING")
+        normalized.filter(
+          (o) => !o.status || o.status === "WAITING" || o.status === "PAID"
+        )
       );
       setMyDeliveryOrders(
         normalized.filter(
@@ -295,6 +303,7 @@ function JobsRoute() {
             String(o.freelancer_id || o.freelance_id || "") ===
               String(currentUserId) &&
             !doneSet.has(o.orderId) &&
+            o.status !== "COMPLETE" &&
             !isCompletedOrderStatus(o.status)
         )
       );
@@ -310,7 +319,9 @@ function JobsRoute() {
       // Fetch orders where status is 'WAITING' and linked service is owned by current user
       const { data: orders, error: ordersError } = await supabase
         .from("orders")
-        .select("*, services!inner(name, created_by)")
+        .select(
+          "*, services!inner(name, created_by), destination_address:addresses!destination_address_id(name, address_detail, lat, lng)"
+        )
         .eq("services.created_by", currentUserId)
         .eq("status", "WAITING")
         .order("created_at", { ascending: false });
@@ -323,10 +334,17 @@ function JobsRoute() {
       }
 
       const orderIds = orders.map((o) => o.order_id);
-      const { data: rooms } = await supabase
-        .from("chat_rooms")
-        .select("*")
-        .in("order_id", orderIds);
+      const [roomsResponse, messagesResponse] = await Promise.all([
+        supabase.from("chat_rooms").select("*").in("order_id", orderIds),
+        supabase
+          .from("chat_messages")
+          .select("order_id, content, created_at, sender_id")
+          .in("order_id", orderIds)
+          .order("created_at", { ascending: true })
+      ]);
+
+      const rooms = roomsResponse.data || [];
+      const allMessages = messagesResponse.data || [];
 
       const { data: profileRows } = await supabase
         .from("profiles")
@@ -346,16 +364,48 @@ function JobsRoute() {
         (rooms || []).map((r) => [String(r.order_id), r.id])
       );
 
-      const pending = orders.map((order) => ({
-        roomId: rMap.get(String(order.order_id)) || "",
-        orderId: String(order.order_id),
-        serviceId: String(order.service_id),
-        customerId: String(order.customer_id),
-        customerName: pMap.get(String(order.customer_id)) || "Customer",
-        serviceName: order.services?.name || "Service",
-        requestMessage: "Customer wants to hire your service",
-        requestedAt: order.created_at
-      }));
+      // Map each order to its first customer message or a default
+      const msgMap = new Map();
+      orderIds.forEach((oid) => {
+        const orderMsgs = allMessages.filter(
+          (m) => String(m.order_id) === String(oid)
+        );
+        // Find first non-system message or just first message
+        const firstMsg =
+          orderMsgs.find(
+            (m) => m.content && !m.content.startsWith("[SYSTEM")
+          ) || orderMsgs[0];
+
+        let cleanText = firstMsg?.content || "No message provided";
+        if (cleanText.includes("[SYSTEM_HIRE_REQUEST]")) {
+          cleanText =
+            cleanText.replace(/\[SYSTEM_HIRE_REQUEST\]\s*/, "").trim() ||
+            "Customer wants to hire your service";
+        }
+        msgMap.set(String(oid), cleanText);
+      });
+
+      const pending = orders.map((order) => {
+        const addr = (order as any).destination_address;
+        const orderIdStr = String(order.order_id);
+        return {
+          roomId: rMap.get(orderIdStr) || "",
+          orderId: orderIdStr,
+          serviceId: String(order.service_id),
+          customerId: String(order.customer_id),
+          customerName: pMap.get(String(order.customer_id)) || "Customer",
+          serviceName: order.services?.name || "Service",
+          requestMessage: msgMap.get(orderIdStr),
+          requestedAt: order.created_at,
+          appointmentAt: order.appointment_at,
+          locationLabel: addr
+            ? addr.address_detail || addr.name
+            : "Not specified",
+          locationLat: addr?.lat,
+          locationLng: addr?.lng,
+          price: Number(order.price || 0)
+        };
+      });
 
       setPendingHireRequests(pending);
     } finally {
@@ -367,13 +417,12 @@ function JobsRoute() {
     if (!currentUserId) return;
     try {
       setLoadingOngoingServiceJobs(true);
-      // Fetch orders where status is 'ON_MY_WAY', 'IN_SERVICE', or 'COMPLETE' (but unpaid)
+      // Fetch orders where status is 'ON_MY_WAY', 'IN_SERVICE', or 'PAID'
       const { data: orders, error: ordersError } = await supabase
         .from("orders")
         .select("*, services(name)")
         .eq("freelance_id", currentUserId)
-        .in("status", ["ON_MY_WAY", "IN_SERVICE", "COMPLETE"])
-        .is("payment_id", null) // Filter out orders that have already been paid
+        .in("status", ["ON_MY_WAY", "IN_SERVICE", "PAID"])
         .order("updated_at", { ascending: false });
 
       if (ordersError) throw ordersError;
@@ -407,18 +456,21 @@ function JobsRoute() {
         (rooms || []).map((r) => [String(r.order_id), r.id])
       );
 
-      const ongoing = orders.map((order) => ({
-        roomId: rMap.get(String(order.order_id)) || "",
-        orderId: String(order.order_id),
-        serviceId: String(order.service_id),
-        customerId: String(order.customer_id),
-        customerName: pMap.get(String(order.customer_id)) || "Customer",
-        serviceName: order.services?.name || "Service",
-        acceptedAt: order.created_at,
-        lastAt: order.updated_at,
-        price: Number(order.price || 0),
-        status: order.status
-      }));
+      const ongoing = orders
+        .filter((o) => o.status !== "COMPLETE")
+        .map((order) => ({
+          roomId: rMap.get(String(order.order_id)) || "",
+          orderId: String(order.order_id),
+          serviceId: String(order.service_id),
+          customerId: String(order.customer_id),
+          customerName: pMap.get(String(order.customer_id)) || "Customer",
+          serviceName: order.services?.name || "Service",
+          acceptedAt: order.created_at,
+          lastAt: order.updated_at,
+          price: Number(order.price || 0),
+          status: order.status,
+          appointmentAt: order.appointment_at
+        }));
 
       setOngoingServiceJobs(ongoing);
     } finally {
@@ -431,14 +483,6 @@ function JobsRoute() {
     try {
       setAcceptingHireRoomId(request.orderId);
 
-      // 1. Get order price for earning
-      const { data: orderData } = await supabase
-        .from("orders")
-        .select("price")
-        .eq("order_id", request.orderId)
-        .single();
-
-      // 2. Update order status to 'ON_MY_WAY' and assign freelance_id
       const { error: orderError } = await supabase
         .from("orders")
         .update({
@@ -449,21 +493,9 @@ function JobsRoute() {
 
       if (orderError) throw orderError;
 
-      // 3. Create Freelance Earning (20% logic)
-      if (orderData) {
-        const subtotal = orderData.price / 1.0815;
-        const earningAmount = subtotal * 0.2;
-
-        await supabase.from("freelance_earnings").insert({
-          order_id: request.orderId,
-          freelance_id: currentUserId,
-          amount: earningAmount,
-          status: "pending"
-        });
-      }
-
       const systemMessage =
         "Freelancer accepted your request and is on the way!";
+
       await supabase.from("chat_messages").insert([
         {
           room_id: request.roomId,
@@ -483,37 +515,6 @@ function JobsRoute() {
     }
   };
 
-  const rejectHireRequest = async (request: PendingHireRequestItem) => {
-    if (!currentUserId) return;
-    try {
-      setAcceptingHireRoomId(request.orderId);
-      const { error: orderError } = await supabase
-        .from("orders")
-        .update({ status: "REJECT" })
-        .eq("order_id", request.orderId);
-
-      if (orderError) throw orderError;
-
-      const systemMessage = "Freelancer declined this request.";
-      await supabase.from("chat_messages").insert([
-        {
-          room_id: request.roomId,
-          order_id: request.orderId,
-          sender_id: currentUserId,
-          content: systemMessage,
-          message_type: "SYSTEM_HIRE_DECLINED"
-        }
-      ]);
-
-      toast.success("Job rejected.");
-      await refreshJobBoard();
-    } catch (err: any) {
-      toast.error(err?.message || "Unable to reject job.");
-    } finally {
-      setAcceptingHireRoomId(null);
-    }
-  };
-
   const updateJobStatus = async (orderId: string, nextStatus: string) => {
     if (!currentUserId) return;
     try {
@@ -525,7 +526,6 @@ function JobsRoute() {
 
       if (updateError) throw updateError;
 
-      // Send automated system message to chat
       const { data: rooms } = await supabase
         .from("chat_rooms")
         .select("id")
@@ -572,13 +572,6 @@ function JobsRoute() {
     try {
       setAcceptingOrderId(order.orderId);
 
-      // 1. Get order price for earning
-      const { data: orderData } = await supabase
-        .from("orders")
-        .select("price")
-        .eq("order_id", order.orderId)
-        .single();
-
       const payload = {
         freelance_id: currentUserId,
         status: "ON_MY_WAY"
@@ -591,20 +584,8 @@ function JobsRoute() {
 
       if (error) throw error;
 
-      // 2. Create Freelance Earning (20% logic)
-      if (orderData) {
-        const subtotal = orderData.price / 1.0815;
-        const earningAmount = subtotal * 0.2;
-
-        await supabase.from("freelance_earnings").insert({
-          order_id: order.orderId,
-          freelance_id: currentUserId,
-          amount: earningAmount,
-          status: "pending"
-        });
-      }
-
       toast.success("Order accepted!");
+
       await loadDeliveryOrders();
     } catch (err: any) {
       console.error(err);
@@ -618,34 +599,23 @@ function JobsRoute() {
     if (!currentUserId) return;
     try {
       setCompletingOrderId(order.orderId);
-      const { error: updateError } = await supabase
-        .from("orders")
-        .update({ status: "COMPLETE" })
-        .eq("order_id", order.orderId);
-      if (updateError) throw updateError;
 
-      const { data: rooms } = await supabase
-        .from("chat_rooms")
-        .select("id")
-        .eq("order_id", order.orderId);
-      if (rooms && rooms.length > 0) {
-        const roomIds = rooms.map((r) => r.id);
-        const doneMessageText = `ORDER:${order.orderId}`;
-        for (const roomId of roomIds) {
-          await supabase.from("chat_messages").insert([
-            {
-              room_id: roomId,
-              order_id: order.orderId,
-              sender_id: currentUserId,
-              content: doneMessageText,
-              message_type: "SYSTEM_DELIVERY_DONE"
-            }
-          ]);
+      // Call Edge Function instead of manual updates
+      const { data, error: functionError } = await supabase.functions.invoke(
+        "complete-delivery",
+        {
+          body: { order_id: order.orderId }
         }
-      }
-      setSuccess(`Completed order ${order.orderId}`);
+      );
+
+      if (functionError) throw functionError;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success(`Completed order ${order.orderId.slice(0, 8)}`);
       await loadDeliveryOrders();
     } catch (err: any) {
+      console.error("Completion error:", err);
+      toast.error(err?.message || "Unable to complete order.");
       setError(err?.message || "Unable to complete order.");
     } finally {
       setCompletingOrderId(null);
@@ -685,7 +655,6 @@ function JobsRoute() {
       jobBoardLastUpdatedAt={jobBoardLastUpdatedAt}
       pendingHireRequests={pendingHireRequests}
       acceptHireRequest={acceptHireRequest}
-      rejectHireRequest={rejectHireRequest}
       acceptingHireRoomId={acceptingHireRoomId}
       ongoingServiceJobs={ongoingServiceJobs}
       updateJobStatus={updateJobStatus}
@@ -701,7 +670,7 @@ function JobsRoute() {
       deleteMyService={deleteMyService}
       creating={creating}
       error={error}
-      success={success}
+      success={null}
     />
   );
 }

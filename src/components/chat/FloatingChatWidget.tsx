@@ -56,8 +56,6 @@ const FloatingChatWidget = () => {
   const lastLoadTimeRef = useRef(0);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const isCheckoutFooterPage =
-    pathname === "/order-summary" || pathname === "/payment";
   const activeChatPrefix = useMemo(() => {
     if (pathname.startsWith("/freelance/chat/")) return "/freelance/chat/";
     if (pathname.startsWith("/chat/")) return "/chat/";
@@ -518,9 +516,9 @@ const FloatingChatWidget = () => {
   return (
     <div
       ref={rootRef}
-      className={`fixed right-4 mb-2 md:right-6 z-60 transition-all duration-300 ${
-        isCheckoutFooterPage ? "bottom-44 md:bottom-24" : "bottom-24"
-      }`}
+      className={
+        "fixed right-4 mb-2 md:right-6 z-60 transition-all duration-300 bottom-0"
+      }
     >
       {open && (
         <div className="mb-4 w-85 md:w-100 rounded-[2rem] border border-orange-100 bg-white shadow-[0_20px_50px_rgba(160,63,0,0.15)] overflow-hidden flex flex-col max-h-125 animate-in slide-in-from-bottom-4 zoom-in-95 duration-300">

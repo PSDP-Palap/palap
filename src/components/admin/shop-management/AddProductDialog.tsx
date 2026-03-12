@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 import Loading from "@/components/shared/Loading";
@@ -49,9 +49,40 @@ export const AddProductDialog = ({
     }
   }, [isOpen, loadAddresses]);
 
-  const handleMapChange = useCallback((lat: number, lng: number) => {
-    setNewAddressForm((prev) => ({ ...prev, lat, lng }));
-  }, []);
+  const [resolvingAddress, setResolvingAddress] = useState(false);
+
+  const resolveAddressFromCoordinates = async (lat: number, lng: number) => {
+    try {
+      setResolvingAddress(true);
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      const data = await res.json();
+      return data?.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } catch {
+      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } finally {
+      setResolvingAddress(false);
+    }
+  };
+
+  const handleMapChange = async (lat: number, lng: number) => {
+    // Update coordinates immediately
+    setNewAddressForm((prev) => ({
+      ...prev,
+      lat,
+      lng,
+      address_detail: prev.address_detail || "Resolving address..."
+    }));
+
+    // Resolve address in background
+    const addressDetail = await resolveAddressFromCoordinates(lat, lng);
+    setNewAddressForm((prev) => ({
+      ...prev,
+      address_detail: addressDetail
+    }));
+  };
 
   // 2. Conditional Return (Must come AFTER hooks)
   if (!isOpen) return null;
@@ -311,104 +342,110 @@ export const AddProductDialog = ({
             </div>
 
             {/* Address Selection */}
-            <div className="space-y-3 pt-2 border-t border-gray-50">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
-                Pickup Address
-              </label>
-
-              {!isAddingNewAddress ? (
-                <button
-                  type="button"
-                  onClick={() => setIsAddingNewAddress(true)}
-                  className="w-full py-8 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center gap-2 text-gray-400 hover:border-orange-300 hover:text-orange-500 hover:bg-orange-50/30 transition-all group"
-                >
-                  <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-orange-100 transition-colors">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-6 w-6"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                    </svg>
-                  </div>
-                  <span className="text-sm font-bold">
-                    ระบุที่อยู่นัดรับสินค้า
-                  </span>
-                </button>
-              ) : (
-                <div className="space-y-3 p-4 bg-orange-50/30 rounded-2xl border border-orange-100/50 relative animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="space-y-4 pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
+                  Pickup Address
+                </label>
+                {isAddingNewAddress && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsAddingNewAddress(false);
-                      setNewAddressForm({
-                        name: "",
-                        address_detail: "",
-                        lat: 0,
-                        lng: 0
-                      });
-                    }}
-                    className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-white transition-all"
+                    onClick={() => setIsAddingNewAddress(false)}
+                    className="text-[10px] font-bold text-orange-600 hover:text-orange-700"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
+                    Cancel New Address
                   </button>
+                )}
+              </div>
 
-                  <input
-                    type="text"
-                    placeholder="ชื่อที่อยู่ (เช่น บ้าน, คลังสินค้า)"
-                    value={newAddressForm.name}
-                    onChange={(e) =>
-                      setNewAddressForm((prev) => ({
-                        ...prev,
-                        name: e.target.value
-                      }))
-                    }
-                    className="w-full border border-white bg-white/80 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
-                  />
-                  <input
-                    type="text"
-                    placeholder="รายละเอียดที่อยู่"
-                    value={newAddressForm.address_detail}
-                    onChange={(e) =>
-                      setNewAddressForm((prev) => ({
-                        ...prev,
-                        address_detail: e.target.value
-                      }))
-                    }
-                    className="w-full border border-white bg-white/80 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
-                  />
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      เลือกตำแหน่งบนแผนที่
-                    </label>
-                    <MapPicker onChange={handleMapChange} />
-                    <div className="grid grid-cols-2 gap-2 text-xs font-mono text-gray-400">
-                      <span>Lat: {newAddressForm.lat.toFixed(6)}</span>
-                      <span>Lng: {newAddressForm.lng.toFixed(6)}</span>
+              {!isAddingNewAddress ? (
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingNewAddress(true)}
+                    className="w-full py-6 border-2 border-dashed border-orange-100 rounded-2xl flex flex-col items-center gap-2 text-orange-400 hover:border-orange-300 hover:text-orange-500 hover:bg-orange-50/30 transition-all group"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center group-hover:bg-orange-100 transition-colors">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                        />
+                      </svg>
+                    </div>
+                    <span className="text-xs font-bold">
+                      เพิ่มที่อยู่นัดรับสินค้าใหม่
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4 p-5 bg-orange-50/30 rounded-[2rem] border border-orange-100 relative animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-orange-400 uppercase tracking-widest ml-2">
+                        Location Name
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g., Main Warehouse, Office..."
+                        value={newAddressForm.name}
+                        onChange={(e) =>
+                          setNewAddressForm((prev) => ({
+                            ...prev,
+                            name: e.target.value
+                          }))
+                        }
+                        className="w-full border border-white bg-white/80 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-orange-400 uppercase tracking-widest ml-2">
+                        Address Details
+                      </label>
+                      <textarea
+                        placeholder="Full address details..."
+                        value={newAddressForm.address_detail}
+                        onChange={(e) =>
+                          setNewAddressForm((prev) => ({
+                            ...prev,
+                            address_detail: e.target.value
+                          }))
+                        }
+                        className="w-full border border-white bg-white/80 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all min-h-[60px]"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center px-2">
+                        <label className="text-[10px] font-black text-orange-400 uppercase tracking-widest">
+                          Pin on Map
+                        </label>
+                        {resolvingAddress && (
+                          <span className="text-[9px] font-bold text-orange-600 animate-pulse">
+                            Resolving...
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-64 rounded-2xl overflow-hidden border-2 border-orange-100 shadow-inner relative">
+                        <MapPicker
+                          lat={newAddressForm.lat || 13.7563}
+                          lng={newAddressForm.lng || 100.5018}
+                          onChange={handleMapChange}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[9px] font-mono text-gray-400 px-2">
+                        <span>Lat: {newAddressForm.lat.toFixed(6)}</span>
+                        <span>Lng: {newAddressForm.lng.toFixed(6)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>

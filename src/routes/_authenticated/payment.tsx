@@ -1,16 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import {
+  Banknote,
+  ChevronLeft,
+  CreditCard,
+  Lock,
+  QrCode,
+  ShieldCheck
+} from "lucide-react";
 import { type ChangeEvent, useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { z } from "zod";
-import { 
-  CreditCard, 
-  QrCode, 
-  Banknote, 
-  ShieldCheck, 
-  ChevronLeft,
-  Lock
-} from "lucide-react";
 
 import cashIcon from "@/assets/1048961_97602-OL0FQH-995-removebg-preview.png";
 import cardIcon from "@/assets/2606579_5915-removebg-preview.png";
@@ -31,7 +31,10 @@ const paymentSearchSchema = z.object({
   total: z.coerce.number().optional().default(0),
   deliveryFee: z.coerce.number().optional().default(0),
   order_id: z.string().optional(),
-  address_id: z.string().optional()
+  address_id: z.string().optional(),
+  service_id: z.string().optional(),
+  note: z.string().optional(),
+  appointment_at: z.string().optional()
 });
 
 const cardSchema = z.object({
@@ -55,14 +58,23 @@ export const Route = createFileRoute("/_authenticated/payment")({
 
 function RouteComponent() {
   const router = useRouter();
-  const { subtotal, tax, total, deliveryFee, order_id, address_id } = Route.useSearch();
+  const {
+    subtotal,
+    tax,
+    total,
+    deliveryFee,
+    order_id,
+    address_id,
+    note,
+    appointment_at
+  } = Route.useSearch();
   const cartItems = useCartStore((s) => s.items);
   const clearCart = useCartStore((s) => s.clear);
   const { profile, session } = useUserStore();
   const currentUserId = profile?.id || session?.user?.id || null;
 
   const hasHydrated = useCartStore((s) => s.hasHydrated);
-  
+
   const [paymentMethod, setPaymentMethod] = useState<any>("CARD");
   const [cardNumber, setCardNumber] = useState("");
   const [cardholderName, setCardholderName] = useState("");
@@ -206,7 +218,10 @@ function RouteComponent() {
           throw new Error("Missing user or address information.");
         }
 
-        const productIds = Object.keys(cartItems).filter((id) => cartItems[id] > 0);
+        // --- PRODUCT ORDER FLOW ONLY ---
+        const productIds = Object.keys(cartItems).filter(
+          (id) => cartItems[id] > 0
+        );
         if (productIds.length === 0) {
           throw new Error("Cart is empty.");
         }
@@ -225,7 +240,8 @@ function RouteComponent() {
             pickup_address_id: p.pickup_address_id,
             destination_address_id: address_id,
             price: total,
-            status: "WAITING"
+            status: "WAITING",
+            appointment_at: appointment_at
           };
         });
 
@@ -240,44 +256,22 @@ function RouteComponent() {
         finalOrderId = createdOrders.order_id;
       }
 
-      // 1. Record the transaction as PAID automatically
-      const { error: transError } = await supabase
-        .from("transactions")
-        .insert([
-          {
+      // 1. Call the Edge Function to handle the atomic payment transaction
+      const { data: edgeResponse, error: edgeError } =
+        await supabase.functions.invoke("payment", {
+          body: {
             order_id: finalOrderId,
-            customer_id: currentUserId,
-            amount: total,
-            payment_method: mappedMethod,
-            status: "paid" // Customer payment is now automatic
+            payment_method: mappedMethod
           }
-        ]);
-
-      if (transError) throw transError;
-
-      // 2. Set Order to WAITING status immediately so it's live
-      await supabase
-        .from("orders")
-        .update({ status: "WAITING" })
-        .eq("order_id", finalOrderId);
-
-      // 3. Create freelance earning as PENDING for admin approval later
-      const { data: orderData } = await supabase
-        .from("orders")
-        .select("freelance_id")
-        .eq("order_id", finalOrderId)
-        .single();
-
-      if (orderData?.freelance_id) {
-        await supabase.from("freelance_earnings").insert({
-          order_id: finalOrderId,
-          freelance_id: orderData.freelance_id,
-          amount: deliveryFee,
-          status: "pending" // Only the payout needs admin approval
         });
+
+      if (edgeError || (edgeResponse && edgeResponse.error)) {
+        throw new Error(
+          edgeError?.message || edgeResponse?.error || "Edge Function failed"
+        );
       }
 
-      // 4. Setup Chat Room
+      // 2. Setup Chat Room (if it's a new order)
       const { data: existingRoom } = await supabase
         .from("chat_rooms")
         .select("id")
@@ -285,6 +279,12 @@ function RouteComponent() {
         .maybeSingle();
 
       if (!existingRoom) {
+        const { data: orderData } = await supabase
+          .from("orders")
+          .select("freelance_id")
+          .eq("order_id", finalOrderId)
+          .single();
+
         const { data: newRoom } = await supabase
           .from("chat_rooms")
           .insert({
@@ -296,14 +296,14 @@ function RouteComponent() {
           })
           .select()
           .single();
-        
+
         if (newRoom) {
           await supabase.from("chat_messages").insert({
             room_id: newRoom.id,
             order_id: finalOrderId,
             sender_id: currentUserId,
-            content: "Order placed successfully. Waiting for delivery.",
-            message_type: "SYSTEM_ORDER_PAID"
+            content: `[SYSTEM_ORDER_PAID] Order placed successfully. Waiting for delivery.${note ? `\n\nNote: ${note}` : ""}`,
+            message_type: "SYSTEM"
           });
         }
       }
@@ -316,7 +316,7 @@ function RouteComponent() {
         to: "/order-complete" as any,
         search: {
           order_id: finalOrderId,
-          payment_id: `TR-${Date.now()}`
+          payment_id: edgeResponse.payment_id || `TR-${Date.now()}`
         } as any
       });
     } catch (err: any) {
@@ -328,9 +328,11 @@ function RouteComponent() {
   };
 
   const getButtonText = () => {
-    if (paymentMethod === "CARD" && !canProceedCard) return "Enter Card Details";
+    if (paymentMethod === "CARD" && !canProceedCard)
+      return "Enter Card Details";
     if (paymentMethod === "QR" && !canProceedQr) return "Upload Receipt";
-    if (paymentMethod === "CASH" && !canProceedCash) return "Confirm Cash Payment";
+    if (paymentMethod === "CASH" && !canProceedCash)
+      return "Confirm Cash Payment";
     return order_id ? "Complete Payment" : "Place Order & Pay";
   };
 
@@ -339,23 +341,34 @@ function RouteComponent() {
   return (
     <div className="min-h-screen bg-[#FDFCFB] pt-24 pb-20">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        
         {/* Visual Stepper */}
         <div className="flex items-center justify-center mb-12">
           <div className="flex items-center w-full max-w-2xl">
             <div className="flex flex-col items-center flex-1 relative">
-              <div className="w-10 h-10 rounded-full bg-green-500 text-white flex items-center justify-center font-black z-10 shadow-lg shadow-green-900/20">✓</div>
-              <p className="text-[10px] font-black uppercase tracking-widest mt-2 text-green-600">Summary</p>
+              <div className="w-10 h-10 rounded-full bg-green-500 text-white flex items-center justify-center font-black z-10 shadow-lg shadow-green-900/20">
+                ✓
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-widest mt-2 text-green-600">
+                Summary
+              </p>
               <div className="absolute left-1/2 top-5 w-full h-0.5 bg-green-500 -z-0" />
             </div>
             <div className="flex flex-col items-center flex-1 relative">
-              <div className="w-10 h-10 rounded-full bg-[#A03F00] text-white flex items-center justify-center font-black z-10 shadow-lg shadow-orange-900/20">2</div>
-              <p className="text-[10px] font-black uppercase tracking-widest mt-2 text-[#A03F00]">Payment</p>
+              <div className="w-10 h-10 rounded-full bg-[#A03F00] text-white flex items-center justify-center font-black z-10 shadow-lg shadow-orange-900/20">
+                2
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-widest mt-2 text-[#A03F00]">
+                Payment
+              </p>
               <div className="absolute left-1/2 top-5 w-full h-0.5 bg-gray-100 -z-0" />
             </div>
             <div className="flex flex-col items-center flex-1">
-              <div className="w-10 h-10 rounded-full bg-white border-2 border-gray-100 text-gray-300 flex items-center justify-center font-black z-10">3</div>
-              <p className="text-[10px] font-black uppercase tracking-widest mt-2 text-gray-300">Complete</p>
+              <div className="w-10 h-10 rounded-full bg-white border-2 border-gray-100 text-gray-300 flex items-center justify-center font-black z-10">
+                3
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-widest mt-2 text-gray-300">
+                Complete
+              </p>
             </div>
           </div>
         </div>
@@ -366,13 +379,18 @@ function RouteComponent() {
               <div>
                 <h1 className="text-4xl font-black text-[#4A2600]">Payment</h1>
                 <p className="text-gray-500 font-bold mt-1 uppercase text-xs tracking-widest">
-                  {order_id ? `Finalizing order #${order_id.slice(0,8)}` : "Secure checkout process"}
+                  {order_id
+                    ? `Finalizing order #${order_id.slice(0, 8)}`
+                    : "Secure checkout process"}
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   if (order_id) {
-                    router.navigate({ to: "/order/$order_id" as any, params: { order_id } as any });
+                    router.navigate({
+                      to: "/order/$order_id" as any,
+                      params: { order_id } as any
+                    });
                   } else {
                     router.navigate({ to: "/order-summary" });
                   }
@@ -391,10 +409,12 @@ function RouteComponent() {
                     <div className="p-3 rounded-2xl bg-[#A03F00] text-white shadow-lg shadow-orange-900/20">
                       <Lock className="w-6 h-6" />
                     </div>
-                    <h2 className="text-xl font-black text-[#4A2600]">Choose Payment Method</h2>
+                    <h2 className="text-xl font-black text-[#4A2600]">
+                      Choose Payment Method
+                    </h2>
                   </div>
                 </div>
-                
+
                 <div className="p-8">
                   <PaymentMethodSelector
                     paymentMethod={paymentMethod}
@@ -413,7 +433,9 @@ function RouteComponent() {
                   <div className="space-y-8">
                     <div className="flex items-center gap-3 mb-6">
                       <CreditCard className="w-5 h-5 text-orange-600" />
-                      <h3 className="font-black text-[#4A2600] uppercase tracking-widest text-sm">Card Details</h3>
+                      <h3 className="font-black text-[#4A2600] uppercase tracking-widest text-sm">
+                        Card Details
+                      </h3>
                     </div>
                     <CardDetailsForm
                       cardNumber={cardNumber}
@@ -434,7 +456,9 @@ function RouteComponent() {
                   <div className="space-y-8">
                     <div className="flex items-center gap-3 mb-6">
                       <QrCode className="w-5 h-5 text-orange-600" />
-                      <h3 className="font-black text-[#4A2600] uppercase tracking-widest text-sm">QR Payment</h3>
+                      <h3 className="font-black text-[#4A2600] uppercase tracking-widest text-sm">
+                        QR Payment
+                      </h3>
                     </div>
                     <QrPaymentForm
                       qrIcon={qrIcon}
@@ -449,7 +473,9 @@ function RouteComponent() {
                   <div className="space-y-8">
                     <div className="flex items-center gap-3 mb-6">
                       <Banknote className="w-5 h-5 text-orange-600" />
-                      <h3 className="font-black text-[#4A2600] uppercase tracking-widest text-sm">Cash on Delivery</h3>
+                      <h3 className="font-black text-[#4A2600] uppercase tracking-widest text-sm">
+                        Cash on Delivery
+                      </h3>
                     </div>
                     <CashPaymentForm
                       setCashSubmitted={setCashSubmitted}
@@ -484,8 +510,13 @@ function RouteComponent() {
                     <ShieldCheck className="w-6 h-6" />
                   </div>
                   <div>
-                    <p className="text-xs font-black text-[#4A2600] uppercase tracking-widest mb-1">Encrypted Payment</p>
-                    <p className="text-[10px] text-gray-500 font-bold leading-relaxed">We use industry-standard encryption to protect your sensitive financial data.</p>
+                    <p className="text-xs font-black text-[#4A2600] uppercase tracking-widest mb-1">
+                      Encrypted Payment
+                    </p>
+                    <p className="text-[10px] text-gray-500 font-bold leading-relaxed">
+                      We use industry-standard encryption to protect your
+                      sensitive financial data.
+                    </p>
                   </div>
                 </div>
               </div>

@@ -12,7 +12,7 @@ import type { RefObject } from "react";
 
 import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
-import type { ChatMessage, ChatRoomListItem } from "@/types/service";
+import type { ChatMessage, ChatRoomListItem } from "@/types/chat";
 
 interface ChatWindowProps {
   chatRoomSearch: string;
@@ -165,7 +165,7 @@ export function ChatWindow({
                     <button
                       key={room.roomId}
                       onClick={() => setRoomId(room.roomId)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all ${isActive ? "bg-orange-600 text-white shadow-lg shadow-orange-900/20" : "hover:bg-orange-50 text-[#4A2600]"}`}
+                      className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all ${isActive ? "bg-orange-600 text-[#4A2600] shadow-lg shadow-orange-900/20" : "hover:bg-orange-50 text-[#4A2600]"}`}
                     >
                       <div className="w-12 h-12 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-orange-100">
                         {room.partnerAvatarUrl ? (

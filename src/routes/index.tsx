@@ -8,52 +8,52 @@ import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
 
 export const Route = createFileRoute("/")({
-  beforeLoad: async () => {
-    const { initialize, isInitialized, fetchProfile } = useUserStore.getState();
+	beforeLoad: async () => {
+		const { initialize, isInitialized, fetchProfile } = useUserStore.getState();
 
-    if (!isInitialized) {
-      await initialize();
-    }
+		if (!isInitialized) {
+			await initialize();
+		}
 
-    let currentProfile = useUserStore.getState().profile;
+		let currentProfile = useUserStore.getState().profile;
 
-    if (!currentProfile) {
-      currentProfile = await fetchProfile();
-    }
+		if (!currentProfile) {
+			currentProfile = await fetchProfile();
+		}
 
-    if (currentProfile?.role === "admin") {
-      throw redirect({ to: "/management/admin" });
-    }
-  },
-  component: RouteComponent,
-  pendingComponent: () => <Loading />
+		if (currentProfile?.role === "admin") {
+			throw redirect({ to: "/management/admin" });
+		}
+	},
+	component: RouteComponent,
+	pendingComponent: () => <Loading />,
 });
 
 function RouteComponent() {
-  const { profile } = useUserStore();
+	const { profile } = useUserStore();
 
-  // If Freelance, show Freelance Dashboard
-  if (profile?.role === "freelance") {
-    return <Navigate to="/freelance" />;
-  }
+	// If Freelance, show Freelance Dashboard
+	if (profile?.role === "freelance") {
+		return <Navigate to="/freelance" />;
+	}
 
-  // Otherwise, show regular Home Page (Customers & Guests)
-  return (
-    <main className="relative pb-16 bg-[#FFF2EC]">
-      <div className="relative">
-        <img src="home_header.png" alt="home_header" className="w-full" />
-        <HeaderSection />
-      </div>
+	// Otherwise, show regular Home Page (Customers & Guests)
+	return (
+		<main className="relative pb-16 bg-[#FFF2EC]">
+			<div className="relative">
+				<img src="home_header.png" alt="home_header" className="w-full" />
+				<HeaderSection />
+			</div>
 
-      <div className="max-w-6xl mx-auto px-4">
-        <ServiceSection />
-      </div>
+			<div className="max-w-6xl mx-auto px-4">
+				<ServiceSection />
+			</div>
 
-      <BannerSection />
+			<BannerSection />
 
-      <div className="max-w-6xl mx-auto px-4">
-        <RecommendSection />
-      </div>
-    </main>
-  );
+			<div className="max-w-6xl mx-auto px-4">
+				<RecommendSection />
+			</div>
+		</main>
+	);
 }
