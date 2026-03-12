@@ -26,10 +26,15 @@ export interface DeliveryOrderItem {
 	customerName: string;
 	productName: string;
 	pickupLabel: string;
+	pickupLat?: number | null;
+	pickupLng?: number | null;
 	destinationLabel: string;
+	destinationLat?: number | null;
+	destinationLng?: number | null;
 	price: number;
 	status: string;
 	createdAt?: string;
+	appointmentAt?: string;
 	freelancer_id?: string | null;
 	freelance_id?: string | null;
 }
@@ -43,6 +48,11 @@ export interface PendingHireRequestItem {
 	serviceName: string;
 	requestMessage: string;
 	requestedAt?: string;
+	appointmentAt?: string;
+	locationLabel?: string;
+	locationLat?: number | null;
+	locationLng?: number | null;
+	price?: number;
 }
 
 export interface OngoingServiceJobItem {
@@ -56,4 +66,5 @@ export interface OngoingServiceJobItem {
 	lastAt: string;
 	price: number;
 	status: string;
+	appointmentAt?: string;
 }

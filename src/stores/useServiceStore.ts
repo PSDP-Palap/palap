@@ -5,6 +5,8 @@ import supabase from "@/utils/supabase";
 
 type ServiceState = {
 	services: Service[];
+	selectedServiceForHire: Service | null;
+	setSelectedServiceForHire: (service: Service | null) => void;
 	loadServices: (limit?: number) => Promise<void>;
 	createService: (service: Omit<Service, "service_id">) => Promise<void>;
 	updateService: (
@@ -17,6 +19,8 @@ type ServiceState = {
 
 export const useServiceStore = create<ServiceState>((set) => ({
 	services: [],
+	selectedServiceForHire: null,
+	setSelectedServiceForHire: (service) => set({ selectedServiceForHire: service }),
 	loadServices: async (limit?: number) => {
 		let query = supabase
 			.from("services")

@@ -31,7 +31,7 @@ function DashboardRoute() {
           *,
           service:services(name, category),
           product:products(name),
-          earning:freelance_earnings(status)
+          earning:freelance_earnings(amount, status)
         `)
 				.eq("freelance_id", currentUserId)
 				.order("created_at", { ascending: false })
@@ -45,14 +45,28 @@ function DashboardRoute() {
 				.eq("freelance_id", currentUserId);
 
 			const total = (earnings || [])
-				.filter((e) => e.status === "completed" || e.status === "paid")
+				.filter((e) => {
+					const s = String(e.status || "").toLowerCase();
+					return s === "completed" || s === "paid";
+				})
 				.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+
+			const completedCount = (earnings || []).filter((e) => {
+				const s = String(e.status || "").toLowerCase();
+				return s === "completed" || s === "paid";
+			}).length;
+
+			const pendingCount = (earnings || []).filter((e) => {
+				const s = String(e.status || "").toLowerCase();
+				return s === "pending";
+			}).length;
 
 			setEarningSummary({
 				totalIncome: total,
 				totalOrders: (earnings || []).length,
-				completedOrders: (earnings || []).length,
-				pendingOrders: 0,
+				completedOrders: completedCount,
+				pendingOrders: pendingCount,
 			});
 		} finally {
 			setLoadingOrders(false);

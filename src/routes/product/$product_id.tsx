@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ProductDetailView } from "@/components/product/ProductDetailView";
 import Loading from "@/components/shared/Loading";
 import { useCartStore } from "@/stores/useCartStore";
+import { useServiceStore } from "@/stores/useServiceStore";
 import { withTimeout } from "@/utils/helpers";
 import supabase from "@/utils/supabase";
 
@@ -166,11 +167,15 @@ function RouteComponent() {
 			relatedProducts={relatedProducts}
 			onAddToCart={() => {
 				if (isOutOfStock) return;
+				// Clear any pending service hire when switching to product flow
+				useServiceStore.getState().setSelectedServiceForHire(null);
 				setQuantity(product_id, Math.min(qty, maxQty));
 				router.navigate({ to: "/product" });
 			}}
 			onBuyNow={() => {
 				if (isOutOfStock) return;
+				// Clear any pending service hire when switching to product flow
+				useServiceStore.getState().setSelectedServiceForHire(null);
 				setQuantity(product_id, Math.min(qty, maxQty));
 				router.navigate({ to: "/order-summary" });
 			}}

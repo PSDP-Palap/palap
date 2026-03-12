@@ -22,6 +22,7 @@ interface OrderReviewModalProps {
 	addressDetail: string;
 	displayDate: string;
 	displayTime: string;
+	isService?: boolean;
 }
 
 export function OrderReviewModal({
@@ -37,6 +38,7 @@ export function OrderReviewModal({
 	addressDetail,
 	displayDate,
 	displayTime,
+	isService,
 }: OrderReviewModalProps) {
 	if (!isOpen) return null;
 
@@ -176,7 +178,7 @@ export function OrderReviewModal({
 						onClick={onConfirm}
 						className="flex-1 py-3 px-4 rounded-xl font-black text-white bg-[#A03F00] hover:bg-[#8a3600] shadow-lg shadow-orange-900/20 transition-all hover:-translate-y-0.5"
 					>
-						Confirm & Pay
+						{isService ? "Confirm" : "Confirm & Pay"}
 					</button>
 				</div>
 			</div>

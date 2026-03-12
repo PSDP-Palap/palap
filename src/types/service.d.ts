@@ -16,31 +16,11 @@ export interface Service {
 	detail_2?: string | null;
 	description?: string | null;
 	image_url?: string | null;
+	created_by?: string | null;
 	creator_id?: string | null;
 	creator_name?: string | null;
 	creator_avatar_url?: string | null;
 	created_at?: string;
-}
-
-export interface ChatRoomListItem {
-	roomId: string;
-	serviceId: string;
-	partnerName: string;
-	partnerAvatarUrl: string | null;
-	partnerRoleLabel: "Customer" | "Freelancer";
-	serviceName: string;
-	lastMessage: string;
-	lastAt: string;
-}
-
-export interface ChatMessage {
-	id: string;
-	room_id: string;
-	order_id: string;
-	sender_id: string;
-	content: string;
-	message_type: "TEXT" | "IMAGE" | "SYSTEM";
-	created_at: string;
 }
 
 export interface PendingHireRoomView {

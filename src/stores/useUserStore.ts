@@ -78,6 +78,8 @@ export const useUserStore = create<UserState>((set, get) => ({
 			let lng = null;
 			let addressId = null;
 			let addressName = null;
+			let freelanceData = null;
+
 			if (profile?.role === "customer") {
 				const { data: customer } = await supabase
 					.from("customers")
@@ -93,6 +95,13 @@ export const useUserStore = create<UserState>((set, get) => ({
 				lat = addrData?.lat || null;
 				lng = addrData?.lng || null;
 				addressName = addrData?.name || "Home";
+			} else if (profile?.role === "freelance") {
+				const { data: freelance } = await supabase
+					.from("freelances")
+					.select("*")
+					.eq("id", userId)
+					.maybeSingle();
+				freelanceData = freelance;
 			}
 
 			const finalProfile = profile
@@ -104,9 +113,13 @@ export const useUserStore = create<UserState>((set, get) => ({
 						lng,
 						addressId,
 						addressName,
+						...(freelanceData || {}),
 					} as Profile & {
 						addressId?: string | null;
 						addressName?: string | null;
+						status?: string;
+						job_category?: string;
+						bio?: string;
 					})
 				: ({
 						id: userId,

@@ -50,11 +50,19 @@ export const isCompletedOrderStatus = (
 	status: string | null | undefined,
 	paymentId?: string | null | undefined,
 ): boolean => {
-	if (paymentId && String(paymentId).trim()) return true;
 	const s = String(status || "")
 		.trim()
 		.toUpperCase();
-	return ORDER_COMPLETED_STATUS_SET.has(s);
+
+	// Cancellation/Rejection is always considered completed
+	if (s === "CANCEL" || s === "REJECT") return true;
+
+	// For other terminal statuses, they are only "Completed" if paid
+	if (ORDER_COMPLETED_STATUS_SET.has(s)) {
+		return !!(paymentId && String(paymentId).trim());
+	}
+
+	return false;
 };
 
 export const getOrderIdFromSystemMessage = (

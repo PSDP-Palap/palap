@@ -36,13 +36,22 @@ function EarningRoute() {
 
 			const list = (earnings || []) as FreelanceEarning[];
 			const total = list
-				.filter((e) => e.status === "completed" || e.status === "paid")
+				.filter((e) => {
+					const s = String(e.status || "").toLowerCase();
+					return s === "completed" || s === "paid";
+				})
 				.reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
-			const completedCount = list.filter(
-				(e) => e.status === "completed" || e.status === "paid",
-			).length;
-			const pendingCount = list.filter((e) => e.status === "pending").length;
+
+			const completedCount = list.filter((e) => {
+				const s = String(e.status || "").toLowerCase();
+				return s === "completed" || s === "paid";
+			}).length;
+
+			const pendingCount = list.filter((e) => {
+				const s = String(e.status || "").toLowerCase();
+				return s === "pending";
+			}).length;
 
 			setTransactions(list);
 			setEarningSummary({

@@ -21,8 +21,6 @@ interface ServiceDetailViewProps {
 	startingChat: boolean;
 	canTryHire: boolean;
 	isHireRequested: boolean;
-	hireRequestMessage: string;
-	setHireRequestMessage: (val: string) => void;
 	sendHireRequest: () => Promise<void>;
 	sendingHireRequest: boolean;
 	cancelHireRequest: () => Promise<void>;
@@ -49,8 +47,6 @@ export function ServiceDetailView({
 	startingChat,
 	canTryHire,
 	isHireRequested,
-	hireRequestMessage,
-	setHireRequestMessage,
 	sendHireRequest,
 	sendingHireRequest,
 	cancelHireRequest,
@@ -293,35 +289,25 @@ export function ServiceDetailView({
 									) : (
 										<>
 											{canTryHire && !isHireRequested && (
-												<div className="space-y-4">
-													<textarea
-														value={hireRequestMessage}
-														onChange={(e) =>
-															setHireRequestMessage(e.target.value)
-														}
-														className="w-full bg-orange-50/50 border-2 border-orange-50 rounded-2xl px-4 py-3 text-sm font-bold text-[#4A2600] placeholder:text-orange-200 focus:outline-none focus:border-orange-200 focus:bg-white transition-all min-h-[120px]"
-														placeholder="Message for freelancer (optional)..."
-													/>
-													<button
-														type="button"
-														onClick={sendHireRequest}
-														disabled={
-															sendingHireRequest ||
-															requestLoading ||
-															!canRequestHire
-														}
-														className="w-full bg-[#A03F00] text-white py-4 rounded-2xl font-black text-lg hover:bg-[#803300] shadow-xl shadow-orange-200 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-													>
-														{sendingHireRequest ? (
-															<Loading fullScreen={false} size={20} />
-														) : (
-															<CheckCircle className="w-5 h-5" />
-														)}
-														{sendingHireRequest
-															? "Sending..."
-															: "Request to Hire"}
-													</button>
-												</div>
+												<button
+													type="button"
+													onClick={sendHireRequest}
+													disabled={
+														sendingHireRequest ||
+														requestLoading ||
+														!canRequestHire
+													}
+													className="w-full bg-[#A03F00] text-white py-4 rounded-2xl font-black text-lg hover:bg-[#803300] shadow-xl shadow-orange-200 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+												>
+													{sendingHireRequest ? (
+														<Loading fullScreen={false} size={20} />
+													) : (
+														<CheckCircle className="w-5 h-5" />
+													)}
+													{sendingHireRequest
+														? "Sending..."
+														: "Request to Hire"}
+												</button>
 											)}
 
 											{canTryHire && hasPendingHire && (

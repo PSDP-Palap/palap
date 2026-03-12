@@ -10,6 +10,7 @@ interface PriceSummarySideProps {
 	proceedingToPayment: boolean;
 	proceedToPayment: () => void;
 	orderRowsCount: number;
+	isService?: boolean;
 }
 
 export function PriceSummarySide({
@@ -21,13 +22,14 @@ export function PriceSummarySide({
 	proceedingToPayment,
 	proceedToPayment,
 	orderRowsCount,
+	isService,
 }: PriceSummarySideProps) {
 	return (
 		<aside className="bg-white rounded-[2.5rem] border border-orange-50 p-8 shadow-xl shadow-orange-900/5 h-fit overflow-hidden relative">
 			<div className="absolute top-0 right-0 w-32 h-32 bg-orange-50/50 rounded-full blur-3xl -mr-16 -mt-16" />
 
 			<h2 className="text-2xl font-black text-[#4A2600] mb-8 relative">
-				Payment Summary
+				{isService ? "Hire Summary" : "Payment Summary"}
 			</h2>
 
 			<div className="space-y-4 mb-8 relative">
@@ -78,18 +80,20 @@ export function PriceSummarySide({
 						<Loader2 className="w-5 h-5 animate-spin" />
 					) : (
 						<>
-							Proceed to Payment
+							{isService ? "Confirm Order" : "Proceed to Payment"}
 							<ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
 						</>
 					)}
 				</button>
 
-				<Link
-					to="/product"
-					className="block w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest text-center text-gray-400 hover:text-orange-600 hover:bg-orange-50 transition-all"
-				>
-					Modify Selection
-				</Link>
+				{!isService && (
+					<Link
+						to="/product"
+						className="block w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest text-center text-gray-400 hover:text-orange-600 hover:bg-orange-50 transition-all"
+					>
+						Modify Selection
+					</Link>
+				)}
 			</div>
 		</aside>
 	);

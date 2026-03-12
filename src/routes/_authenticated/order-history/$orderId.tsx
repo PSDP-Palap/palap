@@ -44,6 +44,7 @@ type OrderDetail = {
 	destinationName: string;
 	destinationDetail: string;
 	isCompleted: boolean;
+	paymentId?: string | null;
 };
 
 function RouteComponent() {
@@ -67,7 +68,7 @@ function RouteComponent() {
 				const { data: row, error: orderError } = await supabase
 					.from("orders")
 					.select(
-						"order_id, product_id, service_id, customer_id, freelance_id, status, price, created_at, updated_at, pickup_address_id, destination_address_id",
+						"order_id, product_id, service_id, customer_id, freelance_id, status, price, created_at, updated_at, pickup_address_id, destination_address_id, payment_id",
 					)
 					.eq("order_id", orderId)
 					.eq("customer_id", currentUserId)
@@ -182,6 +183,7 @@ function RouteComponent() {
 						addressMap.get(String(row.destination_address_id || ""))
 							?.address_detail || "Information not available",
 					isCompleted: normalizedStatus === "COMPLETE",
+					paymentId: row.payment_id,
 				});
 			} catch (err: any) {
 				setError(err?.message || "Unable to load order detail.");
@@ -487,16 +489,44 @@ function RouteComponent() {
 										</span>
 									</div>
 								</div>
-								<div className="p-4 rounded-2xl bg-green-50 border border-green-100 flex items-center gap-3">
-									<div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-									<p className="text-[10px] font-black text-green-700 uppercase tracking-widest">
-										Transaction Verified
-									</p>
-								</div>
+								{detail.paymentId ? (
+									<div className="p-4 rounded-2xl bg-green-50 border border-green-100 flex items-center gap-3">
+										<div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+										<p className="text-[10px] font-black text-green-700 uppercase tracking-widest">
+											Transaction Verified
+										</p>
+									</div>
+								) : (
+									<div className="p-4 rounded-2xl bg-orange-50 border border-orange-100 flex items-center gap-3">
+										<div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+										<p className="text-[10px] font-black text-orange-700 uppercase tracking-widest">
+											Transaction Pending
+										</p>
+									</div>
+								)}
 							</section>
 
 							{/* Quick Actions */}
 							<div className="flex flex-col gap-3">
+								{detail.status === "COMPLETE" && !detail.paymentId && (
+									<button
+										onClick={() =>
+											router.navigate({
+												to: "/payment" as any,
+												search: {
+													total: detail.price,
+													subtotal: Math.round(detail.price / 1.03),
+													tax: Math.round(detail.price - detail.price / 1.03),
+													order_id: detail.orderId,
+												},
+											})
+										}
+										className="w-full py-5 rounded-2xl bg-green-600 text-white font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:bg-green-700 transition-all active:scale-95 flex items-center justify-center gap-2 animate-pulse"
+									>
+										<CreditCard className="w-4 h-4" />
+										Pay Outstanding Balance
+									</button>
+								)}
 								{!detail.isCompleted && detail.status !== "CANCEL" && (
 									<>
 										<button

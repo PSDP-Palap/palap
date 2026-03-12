@@ -7,650 +7,670 @@ import MyJobsTab from "@/components/freelance/MyJobsTab";
 import { useServiceStore } from "@/stores/useServiceStore";
 import { useUserStore } from "@/stores/useUserStore";
 import type {
-	DeliveryOrderItem,
-	OngoingServiceJobItem,
-	PendingHireRequestItem,
+  DeliveryOrderItem,
+  OngoingServiceJobItem,
+  PendingHireRequestItem
 } from "@/types/freelance";
 import type { Service } from "@/types/service";
 import { isCompletedOrderStatus } from "@/utils/helpers";
 import supabase from "@/utils/supabase";
 
 export const Route = createFileRoute("/_freelance/freelance/jobs")({
-	component: JobsRoute,
+  component: JobsRoute
 });
 
 function JobsRoute() {
-	const { profile, session } = useUserStore();
-	const { uploadServiceImage } = useServiceStore();
-	const currentUserId = profile?.id || session?.user?.id || null;
+  const { profile, session, fetchProfile } = useUserStore();
+  const { uploadServiceImage } = useServiceStore();
+  const currentUserId = profile?.id || session?.user?.id || null;
 
-	const [services, setServices] = useState<Service[]>([]);
-	const [loadingServices, setLoadingServices] = useState(false);
-	const [pendingHireRequests, setPendingHireRequests] = useState<
-		PendingHireRequestItem[]
-	>([]);
-	const [loadingPendingHireRequests, setLoadingPendingHireRequests] =
-		useState(false);
-	const [acceptingHireRoomId, setAcceptingHireRoomId] = useState<string | null>(
-		null,
-	);
-	const [ongoingServiceJobs, setOngoingServiceJobs] = useState<
-		OngoingServiceJobItem[]
-	>([]);
-	const [loadingOngoingServiceJobs, setLoadingOngoingServiceJobs] =
-		useState(false);
-	const [availableDeliveryOrders, setAvailableDeliveryOrders] = useState<
-		DeliveryOrderItem[]
-	>([]);
-	const [myDeliveryOrders, setMyDeliveryOrders] = useState<DeliveryOrderItem[]>(
-		[],
-	);
-	const [loadingDeliveryOrders, setLoadingDeliveryOrders] = useState(false);
-	const [refreshingJobBoard, setRefreshingJobBoard] = useState(false);
-	const [jobBoardLastUpdatedAt, setJobBoardLastUpdatedAt] = useState<
-		string | null
-	>(null);
-	const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
-	const [completingOrderId, setCompletingOrderId] = useState<string | null>(
-		null,
-	);
-	const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
-	const [creating, setCreating] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [success, setSuccess] = useState<string | null>(null);
+  // Sync profile/status on mount
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchProfile();
+    }
+  }, [session?.user?.id, fetchProfile]);
 
-	const loadMyServices = useCallback(async () => {
-		if (!currentUserId) return;
-		try {
-			setLoadingServices(true);
-			const { data } = await supabase
-				.from("services")
-				.select(
-					"*, pickup_address:addresses!pickup_address_id(*), dest_address:addresses!destination_address_id(*)",
-				)
-				.eq("created_by", currentUserId)
-				.order("created_at", { ascending: false });
-			setServices((data as Service[]) || []);
-		} catch (err) {
-			console.error(err);
-		} finally {
-			setLoadingServices(false);
-		}
-	}, [currentUserId]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [pendingHireRequests, setPendingHireRequests] = useState<
+    PendingHireRequestItem[]
+  >([]);
+  const [loadingPendingHireRequests, setLoadingPendingHireRequests] =
+    useState(false);
+  const [acceptingHireRoomId, setAcceptingHireRoomId] = useState<string | null>(
+    null
+  );
+  const [ongoingServiceJobs, setOngoingServiceJobs] = useState<
+    OngoingServiceJobItem[]
+  >([]);
+  const [loadingOngoingServiceJobs, setLoadingOngoingServiceJobs] =
+    useState(false);
+  const [availableDeliveryOrders, setAvailableDeliveryOrders] = useState<
+    DeliveryOrderItem[]
+  >([]);
+  const [myDeliveryOrders, setMyDeliveryOrders] = useState<DeliveryOrderItem[]>(
+    []
+  );
+  const [loadingDeliveryOrders, setLoadingDeliveryOrders] = useState(false);
+  const [refreshingJobBoard, setRefreshingJobBoard] = useState(false);
+  const [jobBoardLastUpdatedAt, setJobBoardLastUpdatedAt] = useState<
+    string | null
+  >(null);
+  const [acceptingOrderId, setAcceptingOrderId] = useState<string | null>(null);
+  const [completingOrderId, setCompletingOrderId] = useState<string | null>(
+    null
+  );
+  const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-	const createMyService = async (formData: any) => {
-		if (!currentUserId) return;
-		try {
-			setCreating(true);
-			setError(null);
+  const loadMyServices = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      setLoadingServices(true);
+      const { data } = await supabase
+        .from("services")
+        .select(
+          "*, pickup_address:addresses!pickup_address_id(*), dest_address:addresses!destination_address_id(*)"
+        )
+        .eq("created_by", currentUserId)
+        .order("created_at", { ascending: false });
+      setServices((data as Service[]) || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingServices(false);
+    }
+  }, [currentUserId]);
 
-			// 1. Upload image if provided
-			let finalImageUrl = "";
-			if (formData.imageFile) {
-				try {
-					finalImageUrl = await uploadServiceImage(formData.imageFile);
-				} catch (uploadErr) {
-					console.error("Image upload failed:", uploadErr);
-					throw new Error("Failed to upload service image.");
-				}
-			}
+  const createMyService = async (formData: any) => {
+    if (!currentUserId) return;
+    try {
+      setCreating(true);
+      setError(null);
 
-			const payload = {
-				name: formData.name,
-				price: Number(formData.price),
-				category: formData.category,
-				pickup_address_id: null,
-				destination_address_id: null,
-				detail_1: formData.pickupAddress || "",
-				detail_2: formData.destinationAddress || "",
-				image_url: finalImageUrl,
-				created_by: currentUserId,
-			};
-			const { error } = await supabase.from("services").insert([payload]);
-			if (error) throw error;
-			toast.success("Service created successfully!");
-			await loadMyServices();
-		} catch (err: any) {
-			setError(err?.message || "Unable to create service.");
-			toast.error(err?.message || "Unable to create service.");
-		} finally {
-			setCreating(false);
-		}
-	};
+      // 1. Upload image if provided
+      let finalImageUrl = "";
+      if (formData.imageFile) {
+        try {
+          finalImageUrl = await uploadServiceImage(formData.imageFile);
+        } catch (uploadErr) {
+          console.error("Image upload failed:", uploadErr);
+          throw new Error("Failed to upload service image.", {
+            cause: uploadErr
+          });
+        }
+      }
 
-	const updateMyService = async (serviceId: string, formData: any) => {
-		if (!currentUserId) return;
-		try {
-			setCreating(true);
-			setError(null);
+      const payload = {
+        name: formData.name,
+        price: Number(formData.price),
+        category: formData.category,
+        pickup_address_id: null,
+        destination_address_id: null,
+        detail_1: formData.pickupAddress || "",
+        detail_2: formData.destinationAddress || "",
+        image_url: finalImageUrl,
+        created_by: currentUserId
+      };
+      const { error } = await supabase.from("services").insert([payload]);
+      if (error) throw error;
+      toast.success("Service created successfully!");
+      await loadMyServices();
+    } catch (err: any) {
+      setError(err?.message || "Unable to create service.");
+      toast.error(err?.message || "Unable to create service.");
+    } finally {
+      setCreating(false);
+    }
+  };
 
-			// Upload image if provided
-			let finalImageUrl = formData.image_url;
-			if (formData.imageFile) {
-				try {
-					finalImageUrl = await uploadServiceImage(formData.imageFile);
-				} catch (uploadErr) {
-					console.error("Image upload failed:", uploadErr);
-					throw new Error("Failed to upload service image.");
-				}
-			}
+  const updateMyService = async (serviceId: string, formData: any) => {
+    if (!currentUserId) return;
+    try {
+      setCreating(true);
+      setError(null);
 
-			const payload = {
-				name: formData.name,
-				price: Number(formData.price),
-				category: formData.category,
-				image_url: finalImageUrl,
-				detail_1: formData.detail_1,
-				detail_2: formData.detail_2,
-			};
+      // Upload image if provided
+      let finalImageUrl = formData.image_url;
+      if (formData.imageFile) {
+        try {
+          finalImageUrl = await uploadServiceImage(formData.imageFile);
+        } catch (uploadErr) {
+          console.error("Image upload failed:", uploadErr);
+          throw new Error("Failed to upload service image.", {
+            cause: uploadErr
+          });
+        }
+      }
 
-			const { error } = await supabase
-				.from("services")
-				.update(payload)
-				.eq("service_id", serviceId);
+      const payload = {
+        name: formData.name,
+        price: Number(formData.price),
+        category: formData.category,
+        image_url: finalImageUrl,
+        detail_1: formData.detail_1,
+        detail_2: formData.detail_2
+      };
 
-			if (error) throw error;
-			toast.success("Service updated successfully!");
-			await loadMyServices();
-		} catch (err: any) {
-			toast.error(err?.message || "Unable to update service.");
-		} finally {
-			setCreating(false);
-		}
-	};
+      const { error } = await supabase
+        .from("services")
+        .update(payload)
+        .eq("service_id", serviceId);
 
-	const deleteMyService = async (serviceId: string) => {
-		if (!currentUserId) return;
-		try {
-			setCreating(true);
-			const { error } = await supabase
-				.from("services")
-				.delete()
-				.eq("service_id", serviceId);
+      if (error) throw error;
+      toast.success("Service updated successfully!");
+      await loadMyServices();
+    } catch (err: any) {
+      toast.error(err?.message || "Unable to update service.");
+    } finally {
+      setCreating(false);
+    }
+  };
 
-			if (error) throw error;
-			toast.success("Service deleted successfully!");
-			await loadMyServices();
-		} catch (err: any) {
-			toast.error(err?.message || "Unable to delete service.");
-		} finally {
-			setCreating(false);
-		}
-	};
+  const deleteMyService = async (serviceId: string) => {
+    if (!currentUserId) return;
+    try {
+      setCreating(true);
+      const { error } = await supabase
+        .from("services")
+        .delete()
+        .eq("service_id", serviceId);
 
-	const loadDeliveryOrders = useCallback(async () => {
-		if (!currentUserId) return;
-		try {
-			setLoadingDeliveryOrders(true);
-			const { data: orders } = await supabase
-				.from("orders")
-				.select("*")
-				.order("created_at", { ascending: false });
-			if (!orders) return;
+      if (error) throw error;
+      toast.success("Service deleted successfully!");
+      await loadMyServices();
+    } catch (err: any) {
+      toast.error(err?.message || "Unable to delete service.");
+    } finally {
+      setCreating(false);
+    }
+  };
 
-			const orderIds = orders.map((o) => String(o.order_id));
-			const customerIds = Array.from(
-				new Set(orders.map((o) => String(o.customer_id || "")).filter(Boolean)),
-			);
-			const productIds = Array.from(
-				new Set(orders.map((o) => String(o.product_id || "")).filter(Boolean)),
-			);
-			const addressIds = Array.from(
-				new Set(
-					orders
-						.flatMap((o) => [o.pickup_address_id, o.destination_address_id])
-						.filter(Boolean),
-				),
-			);
+  const loadDeliveryOrders = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      setLoadingDeliveryOrders(true);
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!orders) return;
 
-			const [profiles, products, addresses, messages] = await Promise.all([
-				customerIds.length
-					? supabase
-							.from("profiles")
-							.select("id, full_name, email")
-							.in("id", customerIds)
-					: { data: [] },
-				productIds.length
-					? supabase
-							.from("products")
-							.select("product_id, name")
-							.in("product_id", productIds)
-					: { data: [] },
-				addressIds.length
-					? supabase
-							.from("addresses")
-							.select("id, name, address_detail")
-							.in("id", addressIds)
-					: { data: [] },
-				orderIds.length
-					? supabase
-							.from("chat_messages")
-							.select("order_id, content, message_type")
-							.in("order_id", orderIds)
-					: { data: [] },
-			]);
+      const orderIds = orders.map((o) => String(o.order_id));
+      const customerIds = Array.from(
+        new Set(orders.map((o) => String(o.customer_id || "")).filter(Boolean))
+      );
+      const productIds = Array.from(
+        new Set(orders.map((o) => String(o.product_id || "")).filter(Boolean))
+      );
+      const addressIds = Array.from(
+        new Set(
+          orders
+            .flatMap((o) => [o.pickup_address_id, o.destination_address_id])
+            .filter(Boolean)
+        )
+      );
 
-			const pMap = new Map(
-				profiles.data?.map((p) => [
-					String(p.id),
-					p.full_name || p.email || "Customer",
-				]),
-			);
-			const prMap = new Map(
-				products.data?.map((p) => [String(p.product_id), p.name]),
-			);
-			const aMap = new Map(
-				addresses.data?.map((a) => [String(a.id), a.name || a.address_detail]),
-			);
-			const doneSet = new Set(
-				messages.data
-					?.filter(
-						(m) =>
-							String(m.message_type).toUpperCase() === "SYSTEM_DELIVERY_DONE",
-					)
-					.map((m) => String(m.order_id)),
-			);
+      const [profiles, products, addresses, messages] = await Promise.all([
+        customerIds.length
+          ? supabase
+              .from("profiles")
+              .select("id, full_name, email")
+              .in("id", customerIds)
+          : { data: [] },
+        productIds.length
+          ? supabase
+              .from("products")
+              .select("product_id, name")
+              .in("product_id", productIds)
+          : { data: [] },
+        addressIds.length
+          ? supabase
+              .from("addresses")
+              .select("id, name, address_detail, lat, lng")
+              .in("id", addressIds)
+          : { data: [] },
+        orderIds.length
+          ? supabase
+              .from("chat_messages")
+              .select("order_id, content, message_type")
+              .in("order_id", orderIds)
+          : { data: [] }
+      ]);
 
-			const normalized: DeliveryOrderItem[] = orders
-				.filter((o) => !!o.product_id) // Only delivery orders have product_id in this context
-				.map((o) => ({
-					orderId: String(o.order_id),
-					customerId: String(o.customer_id || ""),
-					customerName: pMap.get(String(o.customer_id)) || "Customer",
-					productName: prMap.get(String(o.product_id)) || "Order",
-					pickupLabel: aMap.get(String(o.pickup_address_id)) || "Pickup",
-					destinationLabel:
-						aMap.get(String(o.destination_address_id)) || "Destination",
-					price: Number(o.price || 0),
-					status: String(o.status || "WAITING"),
-					freelancer_id: o.freelancer_id,
-					freelance_id: o.freelance_id,
-				}));
+      const pMap = new Map(
+        profiles.data?.map((p) => [
+          String(p.id),
+          p.full_name || p.email || "Customer"
+        ])
+      );
+      const prMap = new Map(
+        products.data?.map((p) => [String(p.product_id), p.name])
+      );
+      const aMap = new Map(
+        addresses.data?.map((a) => [
+          String(a.id),
+          {
+            label: a.address_detail || a.name || "Location",
+            lat: a.lat,
+            lng: a.lng
+          }
+        ])
+      );
+      const doneSet = new Set(
+        messages.data
+          ?.filter(
+            (m) =>
+              String(m.message_type).toUpperCase() === "SYSTEM_DELIVERY_DONE"
+          )
+          .map((m) => String(m.order_id))
+      );
 
-			setAvailableDeliveryOrders(
-				normalized.filter((o) => !o.status || o.status === "WAITING"),
-			);
-			setMyDeliveryOrders(
-				normalized.filter(
-					(o) =>
-						String(o.freelancer_id || o.freelance_id || "") ===
-							String(currentUserId) &&
-						!doneSet.has(o.orderId) &&
-						!isCompletedOrderStatus(o.status),
-				),
-			);
-		} finally {
-			setLoadingDeliveryOrders(false);
-		}
-	}, [currentUserId]);
+      const normalized: DeliveryOrderItem[] = orders
+        .filter((o) => !!o.product_id) // Only delivery orders have product_id in this context
+        .map((o) => {
+          const pickup = aMap.get(String(o.pickup_address_id));
+          const dest = aMap.get(String(o.destination_address_id));
+          return {
+            orderId: String(o.order_id),
+            customerId: String(o.customer_id || ""),
+            customerName: pMap.get(String(o.customer_id)) || "Customer",
+            productName: prMap.get(String(o.product_id)) || "Order",
+            pickupLabel: pickup?.label || "Pickup",
+            pickupLat: pickup?.lat,
+            pickupLng: pickup?.lng,
+            destinationLabel: dest?.label || "Destination",
+            destinationLat: dest?.lat,
+            destinationLng: dest?.lng,
+            price: Number(o.price || 0),
+            status: String(o.status || "WAITING"),
+            appointmentAt: o.appointment_at,
+            freelancer_id: o.freelancer_id,
+            freelance_id: o.freelance_id
+          };
+        });
 
-	const loadPendingHireRequests = useCallback(async () => {
-		if (!currentUserId) return;
-		try {
-			setLoadingPendingHireRequests(true);
-			// Fetch orders where status is 'WAITING' and linked service is owned by current user
-			const { data: orders, error: ordersError } = await supabase
-				.from("orders")
-				.select("*, services!inner(name, created_by)")
-				.eq("services.created_by", currentUserId)
-				.eq("status", "WAITING")
-				.order("created_at", { ascending: false });
+      setAvailableDeliveryOrders(
+        normalized.filter(
+          (o) => !o.status || o.status === "WAITING" || o.status === "PAID"
+        )
+      );
+      setMyDeliveryOrders(
+        normalized.filter(
+          (o) =>
+            String(o.freelancer_id || o.freelance_id || "") ===
+              String(currentUserId) &&
+            !doneSet.has(o.orderId) &&
+            o.status !== "COMPLETE" &&
+            !isCompletedOrderStatus(o.status)
+        )
+      );
+    } finally {
+      setLoadingDeliveryOrders(false);
+    }
+  }, [currentUserId]);
 
-			if (ordersError) throw ordersError;
+  const loadPendingHireRequests = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      setLoadingPendingHireRequests(true);
+      // Fetch orders where status is 'WAITING' and linked service is owned by current user
+      const { data: orders, error: ordersError } = await supabase
+        .from("orders")
+        .select(
+          "*, services!inner(name, created_by), destination_address:addresses!destination_address_id(name, address_detail, lat, lng)"
+        )
+        .eq("services.created_by", currentUserId)
+        .eq("status", "WAITING")
+        .order("created_at", { ascending: false });
 
-			if (!orders || orders.length === 0) {
-				setPendingHireRequests([]);
-				return;
-			}
+      if (ordersError) throw ordersError;
 
-			const orderIds = orders.map((o) => o.order_id);
-			const { data: rooms } = await supabase
-				.from("chat_rooms")
-				.select("*")
-				.in("order_id", orderIds);
+      if (!orders || orders.length === 0) {
+        setPendingHireRequests([]);
+        return;
+      }
 
-			const { data: profileRows } = await supabase
-				.from("profiles")
-				.select("id, full_name, email")
-				.in(
-					"id",
-					orders.map((o) => o.customer_id),
-				);
+      const orderIds = orders.map((o) => o.order_id);
+      const [roomsResponse, messagesResponse] = await Promise.all([
+        supabase.from("chat_rooms").select("*").in("order_id", orderIds),
+        supabase
+          .from("chat_messages")
+          .select("order_id, content, created_at, sender_id")
+          .in("order_id", orderIds)
+          .order("created_at", { ascending: true })
+      ]);
 
-			const pMap = new Map(
-				(profileRows || []).map((p) => [
-					String(p.id),
-					p.full_name || p.email || "Customer",
-				]),
-			);
-			const rMap = new Map(
-				(rooms || []).map((r) => [String(r.order_id), r.id]),
-			);
+      const rooms = roomsResponse.data || [];
+      const allMessages = messagesResponse.data || [];
 
-			const pending = orders.map((order) => ({
-				roomId: rMap.get(String(order.order_id)) || "",
-				orderId: String(order.order_id),
-				serviceId: String(order.service_id),
-				customerId: String(order.customer_id),
-				customerName: pMap.get(String(order.customer_id)) || "Customer",
-				serviceName: order.services?.name || "Service",
-				requestMessage: "Customer wants to hire your service",
-				requestedAt: order.created_at,
-			}));
+      const { data: profileRows } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in(
+          "id",
+          orders.map((o) => o.customer_id)
+        );
 
-			setPendingHireRequests(pending);
-		} finally {
-			setLoadingPendingHireRequests(false);
-		}
-	}, [currentUserId]);
+      const pMap = new Map(
+        (profileRows || []).map((p) => [
+          String(p.id),
+          p.full_name || p.email || "Customer"
+        ])
+      );
+      const rMap = new Map(
+        (rooms || []).map((r) => [String(r.order_id), r.id])
+      );
 
-	const loadOngoingServiceJobs = useCallback(async () => {
-		if (!currentUserId) return;
-		try {
-			setLoadingOngoingServiceJobs(true);
-			// Fetch orders where status is 'ON_MY_WAY' or 'IN_SERVICE'
-			const { data: orders, error: ordersError } = await supabase
-				.from("orders")
-				.select("*, services(name)")
-				.eq("freelance_id", currentUserId)
-				.in("status", ["ON_MY_WAY", "IN_SERVICE"])
-				.is("payment_id", null) // Filter out orders that have already been paid
-				.order("updated_at", { ascending: false });
+      // Map each order to its first customer message or a default
+      const msgMap = new Map();
+      orderIds.forEach((oid) => {
+        const orderMsgs = allMessages.filter(
+          (m) => String(m.order_id) === String(oid)
+        );
+        // Find first non-system message or just first message
+        const firstMsg =
+          orderMsgs.find(
+            (m) => m.content && !m.content.startsWith("[SYSTEM")
+          ) || orderMsgs[0];
 
-			if (ordersError) throw ordersError;
+        let cleanText = firstMsg?.content || "No message provided";
+        if (cleanText.includes("[SYSTEM_HIRE_REQUEST]")) {
+          cleanText =
+            cleanText.replace(/\[SYSTEM_HIRE_REQUEST\]\s*/, "").trim() ||
+            "Customer wants to hire your service";
+        }
+        msgMap.set(String(oid), cleanText);
+      });
 
-			if (!orders || orders.length === 0) {
-				setOngoingServiceJobs([]);
-				return;
-			}
+      const pending = orders.map((order) => {
+        const addr = (order as any).destination_address;
+        const orderIdStr = String(order.order_id);
+        return {
+          roomId: rMap.get(orderIdStr) || "",
+          orderId: orderIdStr,
+          serviceId: String(order.service_id),
+          customerId: String(order.customer_id),
+          customerName: pMap.get(String(order.customer_id)) || "Customer",
+          serviceName: order.services?.name || "Service",
+          requestMessage: msgMap.get(orderIdStr),
+          requestedAt: order.created_at,
+          appointmentAt: order.appointment_at,
+          locationLabel: addr
+            ? addr.address_detail || addr.name
+            : "Not specified",
+          locationLat: addr?.lat,
+          locationLng: addr?.lng,
+          price: Number(order.price || 0)
+        };
+      });
 
-			const orderIds = orders.map((o) => o.order_id);
-			const { data: rooms } = await supabase
-				.from("chat_rooms")
-				.select("*")
-				.in("order_id", orderIds);
+      setPendingHireRequests(pending);
+    } finally {
+      setLoadingPendingHireRequests(false);
+    }
+  }, [currentUserId]);
 
-			const { data: profileRows } = await supabase
-				.from("profiles")
-				.select("id, full_name, email")
-				.in(
-					"id",
-					orders.map((o) => o.customer_id),
-				);
+  const loadOngoingServiceJobs = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      setLoadingOngoingServiceJobs(true);
+      // Fetch orders where status is 'ON_MY_WAY', 'IN_SERVICE', or 'PAID'
+      const { data: orders, error: ordersError } = await supabase
+        .from("orders")
+        .select("*, services(name)")
+        .eq("freelance_id", currentUserId)
+        .in("status", ["ON_MY_WAY", "IN_SERVICE", "PAID"])
+        .order("updated_at", { ascending: false });
 
-			const pMap = new Map(
-				(profileRows || []).map((p) => [
-					String(p.id),
-					p.full_name || p.email || "Customer",
-				]),
-			);
-			const rMap = new Map(
-				(rooms || []).map((r) => [String(r.order_id), r.id]),
-			);
+      if (ordersError) throw ordersError;
 
-			const ongoing = orders.map((order) => ({
-				roomId: rMap.get(String(order.order_id)) || "",
-				orderId: String(order.order_id),
-				serviceId: String(order.service_id),
-				customerId: String(order.customer_id),
-				customerName: pMap.get(String(order.customer_id)) || "Customer",
-				serviceName: order.services?.name || "Service",
-				acceptedAt: order.created_at,
-				lastAt: order.updated_at,
-				price: Number(order.price || 0),
-				status: order.status,
-			}));
+      if (!orders || orders.length === 0) {
+        setOngoingServiceJobs([]);
+        return;
+      }
 
-			setOngoingServiceJobs(ongoing);
-		} finally {
-			setLoadingOngoingServiceJobs(false);
-		}
-	}, [currentUserId]);
+      const orderIds = orders.map((o) => o.order_id);
+      const { data: rooms } = await supabase
+        .from("chat_rooms")
+        .select("*")
+        .in("order_id", orderIds);
 
-	const acceptHireRequest = async (request: PendingHireRequestItem) => {
-		if (!currentUserId) return;
-		try {
-			setAcceptingHireRoomId(request.orderId);
+      const { data: profileRows } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in(
+          "id",
+          orders.map((o) => o.customer_id)
+        );
 
-			// 1. Get order price for earning
-			const { data: orderData } = await supabase
-				.from("orders")
-				.select("price")
-				.eq("order_id", request.orderId)
-				.single();
+      const pMap = new Map(
+        (profileRows || []).map((p) => [
+          String(p.id),
+          p.full_name || p.email || "Customer"
+        ])
+      );
+      const rMap = new Map(
+        (rooms || []).map((r) => [String(r.order_id), r.id])
+      );
 
-			// 2. Update order status to 'ON_MY_WAY' and assign freelance_id
-			const { error: orderError } = await supabase
-				.from("orders")
-				.update({
-					status: "ON_MY_WAY",
-					freelance_id: currentUserId,
-				})
-				.eq("order_id", request.orderId);
+      const ongoing = orders
+        .filter((o) => o.status !== "COMPLETE")
+        .map((order) => ({
+          roomId: rMap.get(String(order.order_id)) || "",
+          orderId: String(order.order_id),
+          serviceId: String(order.service_id),
+          customerId: String(order.customer_id),
+          customerName: pMap.get(String(order.customer_id)) || "Customer",
+          serviceName: order.services?.name || "Service",
+          acceptedAt: order.created_at,
+          lastAt: order.updated_at,
+          price: Number(order.price || 0),
+          status: order.status,
+          appointmentAt: order.appointment_at
+        }));
 
-			if (orderError) throw orderError;
+      setOngoingServiceJobs(ongoing);
+    } finally {
+      setLoadingOngoingServiceJobs(false);
+    }
+  }, [currentUserId]);
 
-			// 3. Create Freelance Earning (20% logic)
-			if (orderData) {
-				const subtotal = orderData.price / 1.0815;
-				const earningAmount = subtotal * 0.2;
+  const acceptHireRequest = async (request: PendingHireRequestItem) => {
+    if (!currentUserId) return;
+    try {
+      setAcceptingHireRoomId(request.orderId);
 
-				await supabase.from("freelance_earnings").insert({
-					order_id: request.orderId,
-					freelance_id: currentUserId,
-					amount: earningAmount,
-					status: "pending",
-				});
-			}
+      const { error: orderError } = await supabase
+        .from("orders")
+        .update({
+          status: "ON_MY_WAY",
+          freelance_id: currentUserId
+        })
+        .eq("order_id", request.orderId);
 
-			const systemMessage =
-				"Freelancer accepted your request and is on the way!";
-			await supabase.from("chat_messages").insert([
-				{
-					room_id: request.roomId,
-					order_id: request.orderId,
-					sender_id: currentUserId,
-					content: systemMessage,
-					message_type: "SYSTEM_HIRE_ACCEPTED",
-				},
-			]);
+      if (orderError) throw orderError;
 
-			toast.success("Job accepted!");
-			await refreshJobBoard();
-		} catch (err: any) {
-			toast.error(err?.message || "Unable to accept job.");
-		} finally {
-			setAcceptingHireRoomId(null);
-		}
-	};
+      const systemMessage =
+        "Freelancer accepted your request and is on the way!";
 
-	const updateJobStatus = async (orderId: string, nextStatus: string) => {
-		if (!currentUserId) return;
-		try {
-			setUpdatingJobId(orderId);
-			const { error: updateError } = await supabase
-				.from("orders")
-				.update({ status: nextStatus })
-				.eq("order_id", orderId);
+      await supabase.from("chat_messages").insert([
+        {
+          room_id: request.roomId,
+          order_id: request.orderId,
+          sender_id: currentUserId,
+          content: systemMessage,
+          message_type: "SYSTEM_HIRE_ACCEPTED"
+        }
+      ]);
 
-			if (updateError) throw updateError;
+      toast.success("Job accepted!");
+      await refreshJobBoard();
+    } catch (err: any) {
+      toast.error(err?.message || "Unable to accept job.");
+    } finally {
+      setAcceptingHireRoomId(null);
+    }
+  };
 
-			// Send automated system message to chat
-			const { data: rooms } = await supabase
-				.from("chat_rooms")
-				.select("id")
-				.eq("order_id", orderId);
+  const updateJobStatus = async (orderId: string, nextStatus: string) => {
+    if (!currentUserId) return;
+    try {
+      setUpdatingJobId(orderId);
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({ status: nextStatus })
+        .eq("order_id", orderId);
 
-			if (rooms && rooms.length > 0) {
-				let systemMsg = `Status updated to ${nextStatus.replace(/_/g, " ")}`;
-				let msgType = "SYSTEM";
+      if (updateError) throw updateError;
 
-				if (nextStatus === "ON_MY_WAY") {
-					systemMsg = "Freelancer is on the way to pick up your order.";
-					msgType = "SYSTEM_ON_MY_WAY";
-				} else if (nextStatus === "IN_SERVICE") {
-					systemMsg = "Freelancer has started the service.";
-					msgType = "SYSTEM_IN_SERVICE";
-				} else if (nextStatus === "COMPLETE") {
-					systemMsg =
-						"Freelancer has completed the task. Please review and release payment.";
-					msgType = "SYSTEM_COMPLETE";
-				}
+      const { data: rooms } = await supabase
+        .from("chat_rooms")
+        .select("id")
+        .eq("order_id", orderId);
 
-				for (const room of rooms) {
-					await supabase.from("chat_messages").insert({
-						room_id: room.id,
-						order_id: orderId,
-						sender_id: currentUserId,
-						content: systemMsg,
-						message_type: msgType,
-					});
-				}
-			}
+      if (rooms && rooms.length > 0) {
+        let systemMsg = `Status updated to ${nextStatus.replace(/_/g, " ")}`;
+        let msgType = "SYSTEM";
 
-			toast.success(`Status updated to ${nextStatus.replace(/_/g, " ")}`);
-			await refreshJobBoard();
-		} catch (err: any) {
-			toast.error(err?.message || "Failed to update status.");
-		} finally {
-			setUpdatingJobId(null);
-		}
-	};
+        if (nextStatus === "ON_MY_WAY") {
+          systemMsg = "Freelancer is on the way to pick up your order.";
+          msgType = "SYSTEM_ON_MY_WAY";
+        } else if (nextStatus === "IN_SERVICE") {
+          systemMsg = "Freelancer has started the service.";
+          msgType = "SYSTEM_IN_SERVICE";
+        } else if (nextStatus === "COMPLETE") {
+          systemMsg =
+            "Freelancer has completed the task. Please review and release payment.";
+          msgType = "SYSTEM_COMPLETE";
+        }
 
-	const acceptDeliveryOrder = async (order: DeliveryOrderItem) => {
-		if (!currentUserId) return;
-		try {
-			setAcceptingOrderId(order.orderId);
+        for (const room of rooms) {
+          await supabase.from("chat_messages").insert({
+            room_id: room.id,
+            order_id: orderId,
+            sender_id: currentUserId,
+            content: systemMsg,
+            message_type: msgType
+          });
+        }
+      }
 
-			// 1. Get order price for earning
-			const { data: orderData } = await supabase
-				.from("orders")
-				.select("price")
-				.eq("order_id", order.orderId)
-				.single();
+      toast.success(`Status updated to ${nextStatus.replace(/_/g, " ")}`);
+      await refreshJobBoard();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update status.");
+    } finally {
+      setUpdatingJobId(null);
+    }
+  };
 
-			const payload = {
-				freelance_id: currentUserId,
-				status: "ON_MY_WAY",
-			};
+  const acceptDeliveryOrder = async (order: DeliveryOrderItem) => {
+    if (!currentUserId) return;
+    try {
+      setAcceptingOrderId(order.orderId);
 
-			const { error } = await supabase
-				.from("orders")
-				.update(payload)
-				.eq("order_id", order.orderId);
+      const payload = {
+        freelance_id: currentUserId,
+        status: "ON_MY_WAY"
+      };
 
-			if (error) throw error;
+      const { error } = await supabase
+        .from("orders")
+        .update(payload)
+        .eq("order_id", order.orderId);
 
-			// 2. Create Freelance Earning (20% logic)
-			if (orderData) {
-				const subtotal = orderData.price / 1.0815;
-				const earningAmount = subtotal * 0.2;
+      if (error) throw error;
 
-				await supabase.from("freelance_earnings").insert({
-					order_id: order.orderId,
-					freelance_id: currentUserId,
-					amount: earningAmount,
-					status: "pending",
-				});
-			}
+      toast.success("Order accepted!");
 
-			toast.success("Order accepted!");
-			await loadDeliveryOrders();
-		} catch (err: any) {
-			console.error(err);
-			toast.error(err?.message || "Unable to accept order.");
-		} finally {
-			setAcceptingOrderId(null);
-		}
-	};
+      await loadDeliveryOrders();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || "Unable to accept order.");
+    } finally {
+      setAcceptingOrderId(null);
+    }
+  };
 
-	const completeDeliveryOrder = async (order: DeliveryOrderItem) => {
-		if (!currentUserId) return;
-		try {
-			setCompletingOrderId(order.orderId);
-			const { error: updateError } = await supabase
-				.from("orders")
-				.update({ status: "COMPLETE" })
-				.eq("order_id", order.orderId);
-			if (updateError) throw updateError;
+  const completeDeliveryOrder = async (order: DeliveryOrderItem) => {
+    if (!currentUserId) return;
+    try {
+      setCompletingOrderId(order.orderId);
 
-			const { data: rooms } = await supabase
-				.from("chat_rooms")
-				.select("id")
-				.eq("order_id", order.orderId);
-			if (rooms && rooms.length > 0) {
-				const roomIds = rooms.map((r) => r.id);
-				const doneMessageText = `ORDER:${order.orderId}`;
-				for (const roomId of roomIds) {
-					await supabase.from("chat_messages").insert([
-						{
-							room_id: roomId,
-							order_id: order.orderId,
-							sender_id: currentUserId,
-							content: doneMessageText,
-							message_type: "SYSTEM_DELIVERY_DONE",
-						},
-					]);
-				}
-			}
-			setSuccess(`Completed order ${order.orderId}`);
-			await loadDeliveryOrders();
-		} catch (err: any) {
-			setError(err?.message || "Unable to complete order.");
-		} finally {
-			setCompletingOrderId(null);
-		}
-	};
+      // Call Edge Function instead of manual updates
+      const { data, error: functionError } = await supabase.functions.invoke(
+        "complete-delivery",
+        {
+          body: { order_id: order.orderId }
+        }
+      );
 
-	const refreshJobBoard = useCallback(async () => {
-		setRefreshingJobBoard(true);
-		await Promise.all([
-			loadDeliveryOrders(),
-			loadMyServices(),
-			loadPendingHireRequests(),
-			loadOngoingServiceJobs(),
-		]);
-		setJobBoardLastUpdatedAt(new Date().toISOString());
-		setRefreshingJobBoard(false);
-	}, [
-		loadDeliveryOrders,
-		loadMyServices,
-		loadPendingHireRequests,
-		loadOngoingServiceJobs,
-	]);
+      if (functionError) throw functionError;
+      if (data?.error) throw new Error(data.error);
 
-	useEffect(() => {
-		refreshJobBoard();
-	}, [currentUserId, refreshJobBoard]);
+      toast.success(`Completed order ${order.orderId.slice(0, 8)}`);
+      await loadDeliveryOrders();
+    } catch (err: any) {
+      console.error("Completion error:", err);
+      toast.error(err?.message || "Unable to complete order.");
+      setError(err?.message || "Unable to complete order.");
+    } finally {
+      setCompletingOrderId(null);
+    }
+  };
 
-	return (
-		<MyJobsTab
-			services={services}
-			loadingServices={loadingServices}
-			refreshJobBoard={refreshJobBoard}
-			refreshingJobBoard={refreshingJobBoard}
-			loadingDeliveryOrders={loadingDeliveryOrders}
-			loadingPendingHireRequests={loadingPendingHireRequests}
-			loadingOngoingServiceJobs={loadingOngoingServiceJobs}
-			jobBoardLastUpdatedAt={jobBoardLastUpdatedAt}
-			pendingHireRequests={pendingHireRequests}
-			acceptHireRequest={acceptHireRequest}
-			acceptingHireRoomId={acceptingHireRoomId}
-			ongoingServiceJobs={ongoingServiceJobs}
-			updateJobStatus={updateJobStatus}
-			updatingJobId={updatingJobId}
-			availableDeliveryOrders={availableDeliveryOrders}
-			acceptDeliveryOrder={acceptDeliveryOrder}
-			acceptingOrderId={acceptingOrderId}
-			myDeliveryOrders={myDeliveryOrders}
-			completeDeliveryOrder={completeDeliveryOrder}
-			completingOrderId={completingOrderId}
-			createMyService={createMyService}
-			updateMyService={updateMyService}
-			deleteMyService={deleteMyService}
-			creating={creating}
-			error={error}
-			success={success}
-		/>
-	);
+  const refreshJobBoard = useCallback(async () => {
+    setRefreshingJobBoard(true);
+    await Promise.all([
+      loadDeliveryOrders(),
+      loadMyServices(),
+      loadPendingHireRequests(),
+      loadOngoingServiceJobs()
+    ]);
+    setJobBoardLastUpdatedAt(new Date().toISOString());
+    setRefreshingJobBoard(false);
+  }, [
+    loadDeliveryOrders,
+    loadMyServices,
+    loadPendingHireRequests,
+    loadOngoingServiceJobs
+  ]);
+
+  useEffect(() => {
+    refreshJobBoard();
+  }, [currentUserId, refreshJobBoard]);
+
+  return (
+    <MyJobsTab
+      services={services}
+      loadingServices={loadingServices}
+      refreshJobBoard={refreshJobBoard}
+      refreshingJobBoard={refreshingJobBoard}
+      loadingDeliveryOrders={loadingDeliveryOrders}
+      loadingPendingHireRequests={loadingPendingHireRequests}
+      loadingOngoingServiceJobs={loadingOngoingServiceJobs}
+      jobBoardLastUpdatedAt={jobBoardLastUpdatedAt}
+      pendingHireRequests={pendingHireRequests}
+      acceptHireRequest={acceptHireRequest}
+      acceptingHireRoomId={acceptingHireRoomId}
+      ongoingServiceJobs={ongoingServiceJobs}
+      updateJobStatus={updateJobStatus}
+      updatingJobId={updatingJobId}
+      availableDeliveryOrders={availableDeliveryOrders}
+      acceptDeliveryOrder={acceptDeliveryOrder}
+      acceptingOrderId={acceptingOrderId}
+      myDeliveryOrders={myDeliveryOrders}
+      completeDeliveryOrder={completeDeliveryOrder}
+      completingOrderId={completingOrderId}
+      createMyService={createMyService}
+      updateMyService={updateMyService}
+      deleteMyService={deleteMyService}
+      creating={creating}
+      error={error}
+      success={null}
+    />
+  );
 }

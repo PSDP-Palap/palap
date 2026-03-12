@@ -58,6 +58,11 @@ const DashboardTab = ({
 								const adminPaid =
 									earning?.status === "completed" || earning?.status === "paid";
 
+								// Use the actual earning amount if available, otherwise fallback to order price
+								const netAmount = earning?.amount ? Number(earning.amount) : Number(order.price ?? 0);
+								const grossAmount = Number(order.price ?? 0);
+								const actualFee = grossAmount - netAmount;
+
 								return (
 									<div
 										key={order.order_id || index}
@@ -103,9 +108,21 @@ const DashboardTab = ({
 													{category}
 												</span>
 											</div>
-											<p className="text-xl font-bold text-[#5D2611]">
-												฿ {Number(order.price ?? 0).toFixed(2)}
-											</p>
+											<div className="flex flex-col items-end">
+												<p className="text-xl font-bold text-green-600">
+													฿ {netAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+												</p>
+												{actualFee > 0 && (
+													<div className="flex gap-1 text-[8px] font-bold">
+														<span className="text-gray-400 uppercase tracking-tighter">
+															Original: ฿{grossAmount.toLocaleString()}
+														</span>
+														<span className="text-red-400 uppercase tracking-tighter">
+															Fee: -฿{actualFee.toLocaleString()}
+														</span>
+													</div>
+												)}
+											</div>
 										</div>
 									</div>
 								);

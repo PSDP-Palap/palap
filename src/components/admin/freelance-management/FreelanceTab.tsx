@@ -68,14 +68,14 @@ const FreelanceTab = () => {
 		try {
 			const { error } = await supabase
 				.from("freelances")
-				.update({ status })
-				.eq("id", id);
+				.upsert({ id, status, updated_at: new Date().toISOString() }, { onConflict: "id" });
 
 			if (error) throw error;
+			toast.success(`สถานะเปลี่ยนเป็น ${status} เรียบร้อยแล้ว`);
 			fetchFreelances(); // Refresh data
 		} catch (error) {
 			console.error("Error updating freelance status:", error);
-			alert("ไม่สามารถเปลี่ยนสถานะได้ โปรดตรวจสอบการตั้งค่า Database");
+			toast.error("ไม่สามารถเปลี่ยนสถานะได้ โปรดลองอีกครั้ง");
 		}
 	};
 

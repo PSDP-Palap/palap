@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatWindow } from "@/components/chat/ChatWindow";
 import Loading from "@/components/shared/Loading";
 import { useUserStore } from "@/stores/useUserStore";
-import type { ChatRoomListItem } from "@/types/service";
+import type { ChatRoomListItem } from "@/types/chat";
 import { cleanPreviewMessage, withTimeout } from "@/utils/helpers";
 import supabase, { isUuidLike } from "@/utils/supabase";
 

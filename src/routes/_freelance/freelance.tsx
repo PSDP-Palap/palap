@@ -4,6 +4,7 @@ import {
 	Outlet,
 	redirect,
 } from "@tanstack/react-router";
+import { ShieldCheck, ShieldAlert, AlertCircle } from "lucide-react";
 
 import { useUserStore } from "@/stores/useUserStore";
 
@@ -20,6 +21,7 @@ function FreelanceManagementLayout() {
 	const { profile, session } = useUserStore();
 	const currentUserId = profile?.id || session?.user?.id || null;
 	const displayName = profile?.full_name || session?.user?.email || "Freelance";
+	const freelanceStatus = (profile as any)?.status || "unverified";
 
 	const roleBadges = Array.from(
 		new Set(
@@ -50,9 +52,29 @@ function FreelanceManagementLayout() {
 									{String(displayName).charAt(0).toUpperCase()}
 								</div>
 
-								<h3 className="font-bold text-base mb-3 text-gray-800 text-center leading-tight">
+								<h3 className="font-bold text-base mb-2 text-gray-800 text-center leading-tight">
 									{displayName}
 								</h3>
+
+								{/* Flat Status Badge - Light Style */}
+								<div className="mb-4">
+									{freelanceStatus === "verified" ? (
+										<div className="flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider border border-green-200">
+											<ShieldCheck className="w-3 h-3" />
+											Verified
+										</div>
+									) : freelanceStatus === "banned" ? (
+										<div className="flex items-center gap-1.5 px-3 py-1 bg-red-100 text-red-700 rounded-full text-[9px] font-black uppercase tracking-wider border border-red-200">
+											<ShieldAlert className="w-3 h-3" />
+											Banned
+										</div>
+									) : (
+										<div className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-[9px] font-black uppercase tracking-wider border border-gray-200">
+											<AlertCircle className="w-3 h-3" />
+											Unverified
+										</div>
+									)}
+								</div>
 
 								<div className="flex flex-col gap-1.5 w-full px-2">
 									{roleBadges.map((role) => (

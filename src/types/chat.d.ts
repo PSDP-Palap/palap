@@ -37,6 +37,17 @@ export interface ChatRoom {
 	updated_at: string;
 }
 
+export interface ChatRoomListItem {
+	roomId: string;
+	serviceId: string;
+	partnerName: string;
+	partnerAvatarUrl: string | null;
+	partnerRoleLabel: "Customer" | "Freelancer";
+	serviceName: string;
+	lastMessage: string;
+	lastAt: string;
+}
+
 export interface ConversationItem {
 	key: string;
 	roomId: string;
